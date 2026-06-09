@@ -548,7 +548,7 @@ function doCalc() {
       else { bru+=b*l.qty; net+=n*l.qty; }
     }
     return {ag, bru, net:mis.length?null:net, mis};
-  }).filter(r=>r.net!==null).sort((a,b)=>a.net-b.net);
+  }).filter(r=>r.net!==null).sort((a,b)=>a.net-b.net||a.bru-b.bru);
 
   // Modo 2
   let tot2=0;
@@ -981,7 +981,7 @@ function showDetail(cod) {
   const p=CATALOG.find(x=>x.c===cod); if(!p) return;
   const rows=AGENCIES.filter(a=>AG_NAMES.includes(a.nombre))
     .map(ag=>{ const b=getBruto(ag.nombre,p.uc),n=getNeto(ag.nombre,p.uc);
-               return b!==null?{ag,b,n}:null;}).filter(Boolean).sort((a,b)=>a.n-b.n);
+               return b!==null?{ag,b,n}:null;}).filter(Boolean).sort((a,b)=>a.n-b.n||a.b-b.b);
   const prev=document.getElementById('det-modal'); if(prev) prev.remove();
   const el=document.createElement('div'); el.id='det-modal';
   el.innerHTML=
