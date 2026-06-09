@@ -1,5 +1,17 @@
 # CLAUDE.md
 
+## 0. Deployment Constraint
+
+**The app must remain a static site deployable on Vercel via GitHub.**
+
+Current architecture: Python runs locally to generate `petinsa_envios.html` (a self-contained HTML+JS file with data embedded as JSON). Vercel serves that file statically — no server-side Python at runtime. This is intentional and must be preserved.
+
+**Default rule:** every feature must be implementable within this static constraint (client-side JS, data embedded at build time).
+
+**Exception:** if a future feature would be exponentially more valuable but requires a server (e.g., real-time ERP sync, FastAPI backend), do not implement it silently — flag it explicitly so the trade-off can be evaluated before deciding.
+
+---
+
 ## 1. Quickstart Commands
 
 ### Build & Run
