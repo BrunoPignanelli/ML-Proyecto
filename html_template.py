@@ -409,6 +409,7 @@ const $ = id => document.getElementById(id);
 const fmt   = n => (n===null||n===undefined||isNaN(n)) ? '-' : '$' + Math.round(n).toLocaleString('es-UY');
 const today = () => new Date().toISOString().slice(0,10);
 const esc   = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const normStr = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 
 function showToast(msg, type='success') {
   const t = $('main-toast');
@@ -432,11 +433,11 @@ let acResults = [], acIdx = -1;
 function acSearch(q) {
   const box = $('ac-box');
   if (q.length < 2) { box.style.display='none'; acResults=[]; return; }
-  const ql = q.toLowerCase();
+  const ql = normStr(q);
   acResults = CATALOG.filter(p =>
-    p.c.toLowerCase().includes(ql) ||
-    p.d.toLowerCase().includes(ql) ||
-    p.r.toLowerCase().includes(ql)
+    normStr(p.c).includes(ql) ||
+    normStr(p.d).includes(ql) ||
+    normStr(p.r).includes(ql)
   ).slice(0, 14);
   if (!acResults.length) { box.style.display='none'; return; }
   box.innerHTML = acResults.map((p,i) =>
@@ -925,10 +926,10 @@ const famSel=$('cat-fam');
 });
 
 function filterCat() {
-  const q=$('cat-q').value.toLowerCase(), fam=$('cat-fam').value;
+  const q=normStr($('cat-q').value), fam=$('cat-fam').value;
   catFiltered=CATALOG.filter(p=>
     (!fam||p.f===fam)&&
-    (!q||p.c.toLowerCase().includes(q)||p.d.toLowerCase().includes(q)||p.r.toLowerCase().includes(q))
+    (!q||normStr(p.c).includes(q)||normStr(p.d).includes(q)||normStr(p.r).includes(q))
   );
   catPage=1; renderCat();
 }
