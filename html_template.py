@@ -9,11 +9,18 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PETINSA - Envios</title>
+<meta name="theme-color" content="#1a3a5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PETINSA">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.svg">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
 :root{--azul:#1a3a5c;--azul-c:#e8f0f8;--azul-m:#2c5282;}
+html,body{overflow-x:hidden;}
 body{background:#f4f6f9;font-size:.91rem;}
 .navbar{background:var(--azul)!important;}
 .tab-btn{cursor:pointer;padding:.45rem 1.1rem;border:none;background:transparent;
@@ -50,16 +57,38 @@ body{background:#f4f6f9;font-size:.91rem;}
   .card{box-shadow:none!important;border:1px solid #ddd!important;}
 }
 @media (max-width:575px){
-  body{font-size:.85rem;}
-  .tab-btn{padding:.4rem .65rem;}
-  .tab-btn .tab-txt{display:none;}
+  body{font-size:.875rem;}
+  .container-fluid{padding-left:.65rem!important;padding-right:.65rem!important;}
+  /* Tabs: equal-width, icon-only */
+  .tab-btn{flex:1;padding:.7rem .2rem;font-size:.78rem;text-align:center;white-space:nowrap;}
+  .tab-txt{display:none;}
+  /* Inputs: 16px prevents iOS zoom; 44px min-height for touch */
+  input,select,.form-control,.form-select,.form-control-sm{font-size:16px!important;}
+  .form-control,.form-select{min-height:44px;}
+  .form-control-sm{min-height:40px;}
+  /* Touch targets for primary buttons */
+  .btn-p,.btn-warning{min-height:44px;font-size:.9rem;}
+  /* Card padding reduction */
+  .card-body{padding:.6rem!important;}
+  .ch{padding:.5rem .75rem!important;font-size:.87rem;}
+  /* Qty input in order table */
+  .qty-inp{width:56px!important;}
+  /* Autocomplete: cap at 40% of viewport height */
   #ac-box{max-height:40vh;}
-  .ac-it{padding:.55rem .8rem;}
-  .qty-inp{width:52px!important;}
-  .d-flex.gap-4{gap:.5rem!important;}
-  .chart-wrap{height:180px;}
-  .container-fluid{padding-left:.75rem!important;padding-right:.75rem!important;}
-  input,select,.form-control,.form-select{font-size:16px!important;}
+  .ac-it{padding:.65rem .75rem;}
+  /* Charts */
+  .chart-wrap{height:175px;}
+  /* Summary cards: reduce large price font */
+  #summary-cards .fs-3{font-size:1.25rem!important;}
+  /* Flex gap reduction */
+  .gap-4{gap:.5rem!important;}
+  .gap-3{gap:.4rem!important;}
+}
+/* Suppress hover effects on touch-only devices */
+@media (hover:none){
+  .tab-btn:hover:not(.active){background:transparent!important;}
+  .cat-tr:hover{background:transparent!important;}
+  .btn-p:hover{background:var(--azul)!important;}
 }
 </style>
 </head>
@@ -67,8 +96,8 @@ body{background:#f4f6f9;font-size:.91rem;}
 
 <!-- NAVBAR -->
 <nav class="navbar navbar-dark px-3 py-2 mb-0">
-  <span class="navbar-brand fw-bold fs-5 text-truncate" style="max-width:220px">
-    <i class="bi bi-truck me-2"></i>PETINSA &mdash; Sistema de Envios
+  <span class="navbar-brand fw-bold fs-5 text-truncate" style="max-width:65vw">
+    <i class="bi bi-truck me-2"></i>PETINSA<span class="d-none d-sm-inline"> &mdash; Sistema de Envios</span>
   </span>
   <span class="text-white-50 small d-none d-sm-inline">Tarifas Mayo 2026</span>
 </nav>
@@ -99,7 +128,7 @@ body{background:#f4f6f9;font-size:.91rem;}
           <div class="ch"><i class="bi bi-file-text me-2"></i>Datos del pedido</div>
           <div class="card-body">
             <div class="row g-2">
-              <div class="col-6 col-sm-4 col-md-2">
+              <div class="col-12 col-sm-4 col-md-2">
                 <label class="form-label mb-1 fw-semibold small">N&deg; Pedido</label>
                 <input id="f-nped" class="form-control form-control-sm" placeholder="Ej: 00123">
               </div>
@@ -185,7 +214,7 @@ body{background:#f4f6f9;font-size:.91rem;}
         <!-- Canje -->
         <div class="card mb-3">
           <div class="card-body py-2">
-            <div class="d-flex align-items-center gap-4 flex-wrap">
+            <div class="d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-2 gap-sm-4">
               <span class="fw-semibold"><i class="bi bi-percent me-1"></i>Canje:</span>
               <div class="form-check form-check-inline mb-0">
                 <input class="form-check-input" type="radio" name="cj" id="cj-a" value="A" checked>
@@ -215,9 +244,11 @@ body{background:#f4f6f9;font-size:.91rem;}
               <table class="table table-sm table-hover mb-0">
                 <thead class="table-light"><tr>
                   <th>#</th><th>Agencia</th>
-                  <th class="text-end">Total bruto</th>
+                  <th class="text-end d-none d-sm-table-cell">Total bruto</th>
                   <th class="text-end">Total neto</th>
-                  <th>Canje</th><th>Frecuencia</th><th>Dias/sem</th>
+                  <th>Canje</th>
+                  <th class="d-none d-sm-table-cell">Frecuencia</th>
+                  <th class="d-none d-sm-table-cell">Dias/sem</th>
                 </tr></thead>
                 <tbody id="m1-body"></tbody>
               </table>
@@ -275,10 +306,10 @@ body{background:#f4f6f9;font-size:.91rem;}
       <div class="ch"><i class="bi bi-grid me-2"></i>Catalogo de Productos</div>
       <div class="card-body">
         <div class="row g-2 mb-3">
-          <div class="col-md-5">
+          <div class="col-12 col-md-5">
             <input id="cat-q" class="form-control" placeholder="Buscar codigo, descripcion, ramo...">
           </div>
-          <div class="col-md-3">
+          <div class="col-12 col-md-3">
             <select id="cat-fam" class="form-select"><option value="">Todas las familias</option></select>
           </div>
           <div class="col-12 col-md-4 d-flex align-items-center justify-content-start justify-content-md-end">
@@ -414,6 +445,14 @@ const PG = 25;
 let lastM1 = [], lastM2 = [], lastTot2 = 0, lastTot1 = 0;
 let chartInstances = {};
 const LS_KEY = 'petinsa_orders_v1';
+const SUPABASE_URL = '__SUPABASE_URL__';
+const SUPABASE_KEY = '__SUPABASE_KEY__';
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_KEY,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=minimal'
+};
 const AZUL = '#1a3a5c';
 const COLORS = ['#1a3a5c','#2196F3','#4CAF50','#FF9800','#E91E63',
                 '#9C27B0','#00BCD4','#FF5722','#607D8B','#795548'];
@@ -615,11 +654,11 @@ function renderM1(rows) {
     return '<tr class="'+cls+'">'+
       '<td>'+(medals[i]||i+1+'.')+'</td>'+
       '<td class="fw-semibold">'+esc(r.ag.nombre)+'</td>'+
-      '<td class="text-end text-muted">'+fmt(r.bru)+'</td>'+
+      '<td class="text-end text-muted d-none d-sm-table-cell">'+fmt(r.bru)+'</td>'+
       '<td class="text-end">'+netH+'</td>'+
       '<td><span class="badge bg-secondary">'+Math.round(r.ag.canje*100)+'%</span></td>'+
-      '<td>'+esc(r.ag.freq)+'</td>'+
-      '<td class="text-center"><span class="badge '+(r.ag.dias>=5?'bg-success':'bg-warning text-dark')+'">'+
+      '<td class="d-none d-sm-table-cell">'+esc(r.ag.freq)+'</td>'+
+      '<td class="text-center d-none d-sm-table-cell"><span class="badge '+(r.ag.dias>=5?'bg-success':'bg-warning text-dark')+'">'+
         r.ag.dias+'d</span></td>'+
       '</tr>';
   }).join('');
@@ -688,40 +727,104 @@ function renderSummary(m1, tot2) {
     '</div></div></div>';
 }
 
-// ── Guardar pedido ────────────────────────────────────────────────────────
-function loadOrders() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); }
-  catch(e) { return []; }
+// ── Supabase / storage ────────────────────────────────────────────────────
+async function loadOrders() {
+  if (!SUPABASE_URL) {
+    try { return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); } catch(e) { return []; }
+  }
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/pedidos?select=*&order=created_at.desc&limit=500`,
+      {headers: SB_HEADERS}
+    );
+    if (!r.ok) throw new Error();
+    return await r.json();
+  } catch(e) {
+    try { return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); } catch(_) { return []; }
+  }
 }
-function saveOrders(arr) { localStorage.setItem(LS_KEY, JSON.stringify(arr)); }
 
-function guardarPedido() {
+async function saveOrder(record) {
+  if (!SUPABASE_URL) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(LS_KEY)||'[]');
+      arr.unshift(record);
+      if (arr.length>500) arr.splice(500);
+      localStorage.setItem(LS_KEY, JSON.stringify(arr));
+    } catch(e) {}
+    return;
+  }
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/pedidos`, {
+    method: 'POST', headers: SB_HEADERS, body: JSON.stringify(record)
+  });
+  if (!r.ok) throw new Error('Error al guardar en Supabase');
+}
+
+async function deleteOrder(id) {
+  if (!SUPABASE_URL) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(LS_KEY)||'[]').filter(o=>o.id!==id);
+      localStorage.setItem(LS_KEY, JSON.stringify(arr));
+    } catch(e) {}
+    return;
+  }
+  await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${id}`, {
+    method: 'DELETE', headers: SB_HEADERS
+  });
+}
+
+async function deleteAllOrders() {
+  if (!SUPABASE_URL) { localStorage.removeItem(LS_KEY); return; }
+  await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=gt.0`, {
+    method: 'DELETE', headers: SB_HEADERS
+  });
+}
+
+async function refreshDashboard() {
+  const orders = await loadOrders();
+  $('dash-empty').style.display   = orders.length===0 ? '' : 'none';
+  $('dash-content').style.display = orders.length>0   ? '' : 'none';
+  renderKPIs(orders);
+  if (orders.length>0) {
+    renderBarChart('ch-prods', topProds(orders));
+    renderBarChart('ch-dests', topDests(orders));
+    renderBarChart('ch-clis',  topClis(orders));
+    renderDoughnut('ch-ags',   topAgs(orders));
+    renderHistorial(orders);
+  }
+}
+
+async function guardarPedido() {
   if (!lastM1.length && !lastM2.length) {
     alert('Primero calcular el envio.'); return;
   }
-  const best = lastM1.length ? lastM1[0] : null;
-  const rec = {
-    id: Date.now(),
-    ts: new Date().toISOString(),
-    fecha:    $('f-fecha').value,
-    nped:     $('f-nped').value,
-    cliente:  $('f-cliente').value,
-    destino:  $('f-dest').value,
-    vendedor: $('f-vendedor').value,
-    obs:      $('f-obs').value,
-    canje_modo: document.querySelector('input[name="cj"]:checked').value,
-    lineas: [...order.values()].map(p => ({cod:p.c, desc:p.d.substring(0,60), cat:p.cn, uc:p.uc, qty:p.qty})),
-    m1_agencia: best ? best.ag.nombre : null,
-    m1_bru:     best ? Math.round(best.bru) : null,
-    m1_net:     best ? Math.round(best.net) : null,
-    m2_net:     Math.round(lastTot2),
-    m2_ags:     [...new Set(lastM2.filter(r=>r.bestAg).map(r=>r.bestAg.nombre))],
-  };
-  const orders = loadOrders();
-  orders.unshift(rec);
-  if (orders.length > 500) orders.splice(500);
-  saveOrders(orders);
-  showToast('Pedido guardado correctamente', 'success');
+  const btn = document.querySelector('[onclick="guardarPedido()"]');
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Guardando...'; }
+  try {
+    const best = lastM1.length ? lastM1[0] : null;
+    const rec = {
+      fecha:    $('f-fecha').value,
+      nped:     $('f-nped').value,
+      cliente:  $('f-cliente').value,
+      destino:  $('f-dest').value,
+      vendedor: $('f-vendedor').value,
+      obs:      $('f-obs').value,
+      canje_modo: document.querySelector('input[name="cj"]:checked').value,
+      lineas: [...order.values()].map(p => ({cod:p.c, desc:p.d.substring(0,60), cat:p.cn, uc:p.uc, qty:p.qty})),
+      m1_agencia: best ? best.ag.nombre : null,
+      m1_bru:     best ? Math.round(best.bru) : null,
+      m1_net:     best ? Math.round(best.net) : null,
+      m2_net:     Math.round(lastTot2),
+      m2_ags:     [...new Set(lastM2.filter(r=>r.bestAg).map(r=>r.bestAg.nombre))],
+    };
+    await saveOrder(rec);
+    showToast('Pedido guardado correctamente ✓', 'success');
+    await refreshDashboard();
+  } catch(e) {
+    showToast('Error al guardar el pedido', 'danger');
+  } finally {
+    if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save me-1"></i>Guardar pedido'; }
+  }
 }
 
 // ── Descargar CSV ─────────────────────────────────────────────────────────
@@ -761,18 +864,8 @@ function downloadCSV() {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
-function buildDashboard() {
-  const orders = loadOrders();
-  $('dash-empty').style.display   = orders.length===0 ? '' : 'none';
-  $('dash-content').style.display = orders.length>0   ? '' : 'none';
-  renderKPIs(orders);
-  if (orders.length>0) {
-    renderBarChart('ch-prods',  topProds(orders));
-    renderBarChart('ch-dests',  topDests(orders));
-    renderBarChart('ch-clis',   topClis(orders));
-    renderDoughnut('ch-ags',    topAgs(orders));
-    renderHistorial(orders);
-  }
+async function buildDashboard() {
+  await refreshDashboard();
 }
 
 function renderKPIs(orders) {
@@ -801,7 +894,7 @@ function renderKPIs(orders) {
 }
 
 function kpiCard(icon, label, bg, val, sub) {
-  return '<div class="col-md-3 col-sm-6">'+
+  return '<div class="col-6 col-sm-6 col-md-3">'+
     '<div class="card text-white" style="background:'+bg+'">'+
     '<div class="card-body py-3">'+
     '<i class="bi '+icon+' fs-3 opacity-50"></i>'+
@@ -894,23 +987,26 @@ function renderHistorial(orders) {
   ).join('');
 }
 
-function borrarOrden(id) {
+async function borrarOrden(id) {
   if (!confirm('Borrar este pedido del historial?')) return;
-  const orders = loadOrders().filter(o=>o.id!==id);
-  saveOrders(orders);
-  buildDashboard();
-  showToast('Pedido borrado', 'warning');
+  try {
+    await deleteOrder(id);
+    await refreshDashboard();
+    showToast('Pedido borrado', 'warning');
+  } catch(e) { showToast('Error al borrar el pedido', 'danger'); }
 }
 
-function borrarDatos() {
+async function borrarDatos() {
   if (!confirm('Borrar TODOS los pedidos guardados? Esta accion no se puede deshacer.')) return;
-  localStorage.removeItem(LS_KEY);
-  buildDashboard();
-  showToast('Datos borrados', 'warning');
+  try {
+    await deleteAllOrders();
+    await refreshDashboard();
+    showToast('Datos borrados', 'warning');
+  } catch(e) { showToast('Error al borrar los datos', 'danger'); }
 }
 
-function exportHistorial() {
-  const orders = loadOrders();
+async function exportHistorial() {
+  const orders = await loadOrders();
   if (!orders.length) { alert('No hay pedidos guardados.'); return; }
   const rows = [
     ['Fecha','N Pedido','Cliente','Destino','Vendedor','Productos',
@@ -1051,7 +1147,15 @@ function showDetail(cod) {
 // ── Init ──────────────────────────────────────────────────────────────────
 $('f-fecha').value = today();
 filterCat();
+loadOrders().then(orders => { renderKPIs(orders); });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
 </body>
 </html>'''

@@ -1126,13 +1126,28 @@ filterCat();
 </body>
 </html>'''
 
+# ── Importar template actualizado (responsive + Supabase + todas las features) ──
+from html_template import HTML_TEMPLATE
+
+# ── Credenciales Supabase (desde .env o variables de entorno) ──────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+import os
+SUPABASE_URL = os.getenv('SUPABASE_URL', '')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
+
 # ── Substituir placeholders con JSON real ─────────────────────────────────────
 HTML = (HTML_TEMPLATE
-    .replace('__CATALOG__',  catalog_json)
-    .replace('__AGENCIES__', agencies_json)
-    .replace('__PRICES__',   prices_json)
-    .replace('__UCATS__',    ucats_json)
-    .replace('__AG_NAMES__', ag_names_json)
+    .replace('__CATALOG__',      catalog_json)
+    .replace('__AGENCIES__',     agencies_json)
+    .replace('__PRICES__',       prices_json)
+    .replace('__UCATS__',        ucats_json)
+    .replace('__AG_NAMES__',     ag_names_json)
+    .replace('__SUPABASE_URL__', SUPABASE_URL)
+    .replace('__SUPABASE_KEY__', SUPABASE_KEY)
 )
 
 out = Path('petinsa_envios.html')

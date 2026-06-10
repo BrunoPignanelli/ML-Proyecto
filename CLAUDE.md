@@ -6,6 +6,8 @@
 
 Current architecture: Python runs locally to generate `petinsa_envios.html` (a self-contained HTML+JS file with data embedded as JSON). Vercel serves that file statically — no server-side Python at runtime. This is intentional and must be preserved.
 
+The app is a **PWA (Progressive Web App)**. Once hosted on Vercel (HTTPS), users can install it on their phone home screen from Chrome/Safari — it opens full-screen like a native app and works offline. The PWA shell files (`manifest.json`, `sw.js`, `icon.svg`) are static files committed to the repo and served by Vercel alongside the HTML.
+
 **Default rule:** every feature must be implementable within this static constraint (client-side JS, data embedded at build time).
 
 **Exception:** if a future feature would be exponentially more valuable but requires a server (e.g., real-time ERP sync, FastAPI backend), do not implement it silently — flag it explicitly so the trade-off can be evaluated before deciding.
@@ -40,9 +42,23 @@ python fix_mapping_cell.py    # Move misplaced mapping cell to correct position
 ### Install Dependencies
 
 ```bash
-pip install pandas openpyxl jupyter
-# No requirements.txt exists — these three are the only runtime dependencies
+pip install pandas openpyxl jupyter python-dotenv
+# python-dotenv is required for Supabase credential injection
 ```
+
+### Supabase Setup (one-time, manual)
+1. Create project at supabase.com → run SQL in plan file to create `pedidos` table
+2. Copy Project URL + anon key to `.env`:
+```
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_KEY=eyJ...
+```
+3. `.env` is gitignored — never commit it. For Vercel, set these as environment variables in the project settings.
+
+### PWA Install (after deploying to Vercel)
+- **Android Chrome:** tap "Instalar app" banner or menu → "Agregar a pantalla de inicio"
+- **iOS Safari:** menú compartir → "Agregar a inicio"
+- The service worker caches the HTML shell for offline use; Supabase API calls always go through the network.
 
 ### Export Results
 
@@ -63,6 +79,14 @@ pip install pandas openpyxl jupyter
 | `comparativa_agencias.ipynb` | **Interactive analysis notebook.** Used for exploration, verification, and generating `comparativa_resultado.xlsx`. |
 | `petinsa_envios.html` | **Standalone HTML+JS app** for PETINSA staff — no Python needed at runtime. Generated output, not edited directly. |
 
+### PWA Static Files (served by Vercel alongside the HTML)
+
+| File | Purpose |
+|---|---|
+| `manifest.json` | PWA manifest — app name, theme color, start URL, icon reference. Required for "Add to Home Screen". |
+| `sw.js` | Service worker — caches HTML/CDN assets for offline use, passes Supabase API calls through unchanged. Cache versioned as `petinsa-v1`; increment on breaking changes. |
+| `icon.svg` | App icon — dark blue (#1a3a5c) background with white truck. Used by Android Chrome; iOS uses a page screenshot as fallback. |
+
 ### Core Business Logic
 
 | File | Responsibility |
@@ -82,6 +106,8 @@ pip install pandas openpyxl jupyter
 
 ### Critical Configuration
 
+- **`html_template.py` is the active template** — `generar_html.py` imports `HTML_TEMPLATE` from it at generation time. All UI/JS changes go in `html_template.py`. The inline template in `generar_html.py` (lines ~351-1127) is legacy and overridden by the import.
+- **PWA cache version** (`sw.js` line 2: `const CACHE = 'petinsa-v1'`): increment the version string (e.g., `petinsa-v2`) whenever the app shell changes significantly so old caches are purged on next visit.
 - **`MAPPING` dict** (in `generar_html_data.py` and duplicated in `generar_html.py`): Maps `{agency_name: {unified_cat_key: agency_label_string}}`. This is the core lookup table. Any change to agency category names in the tariff Excel requires updating this dict.
 - **`UNIFIED_CATS` dict**: The 14 unified category keys and their human-readable names. These keys are the stable internal identifiers used everywhere.
 - **`IVA = 1.22`**: GONFER publishes prices without IVA. This multiplier is applied only to GONFER prices during parsing.
@@ -220,6 +246,14 @@ These are the skill areas that must be applied when working on this project. Rea
 - **Chart.js 4.4.3** — already loaded for charts. Use it if visualization is needed; don't add other charting libraries.
 - **Vanilla JavaScript only** — no React, Vue, jQuery, or other frameworks. The app is a single standalone `.html` file with no build step. Keep it that way.
 - **All JS is embedded in the HTML template** (`html_template.py`). New frontend logic goes there, not in separate `.js` files.
+
+### Mobile / PWA Guidelines
+- **`html,body { overflow-x: hidden }`** is set globally — never add `width > 100vw` elements.
+- **All inputs must have `font-size: 16px` on mobile** — the `@media (max-width:575px)` block in `html_template.py` enforces this to prevent iOS auto-zoom.
+- **Touch targets: 44px minimum** — primary buttons (`.btn-p`, `.btn-warning`) and `.form-control` enforce `min-height: 44px` in the mobile media query.
+- **`@media (hover:none)`** block suppresses hover effects on touch devices — keep it up to date when adding new hover styles.
+- **Supabase async pattern**: all storage functions (`loadOrders`, `saveOrder`, `deleteOrder`) are `async` and use `fetch()` directly against the Supabase REST API. `SUPABASE_URL` and `SUPABASE_KEY` are injected at build time by `generar_html.py` from `.env`. If `SUPABASE_URL` is empty, functions fall back to `localStorage`.
+- **Service worker scope**: `sw.js` is at repo root → scope `/`. The HTML is at `/petinsa_envios.html`. Both are covered. Do not move `sw.js` to a subdirectory or the scope will break.
 
 ### Data Handling & Defensive Coding
 - **Assume Excel data is dirty.** Cells can be `None`, empty strings, floats where strings are expected, `\xa0` non-breaking spaces. Always sanitize with `norm()` and guard with `if value and isinstance(value, ...)`.
