@@ -49,16 +49,28 @@ body{background:#f4f6f9;font-size:.91rem;}
   nav,.tab-btn,#results-btns,.card-header button,#f-obs-row{display:none!important;}
   .card{box-shadow:none!important;border:1px solid #ddd!important;}
 }
+@media (max-width:575px){
+  body{font-size:.85rem;}
+  .tab-btn{padding:.4rem .65rem;}
+  .tab-btn .tab-txt{display:none;}
+  #ac-box{max-height:40vh;}
+  .ac-it{padding:.55rem .8rem;}
+  .qty-inp{width:52px!important;}
+  .d-flex.gap-4{gap:.5rem!important;}
+  .chart-wrap{height:180px;}
+  .container-fluid{padding-left:.75rem!important;padding-right:.75rem!important;}
+  input,select,.form-control,.form-select{font-size:16px!important;}
+}
 </style>
 </head>
 <body>
 
 <!-- NAVBAR -->
 <nav class="navbar navbar-dark px-3 py-2 mb-0">
-  <span class="navbar-brand fw-bold fs-5">
+  <span class="navbar-brand fw-bold fs-5 text-truncate" style="max-width:220px">
     <i class="bi bi-truck me-2"></i>PETINSA &mdash; Sistema de Envios
   </span>
-  <span class="text-white-50 small">Tarifas Mayo 2026</span>
+  <span class="text-white-50 small d-none d-sm-inline">Tarifas Mayo 2026</span>
 </nav>
 
 <div class="container-fluid px-3 pt-3">
@@ -66,14 +78,14 @@ body{background:#f4f6f9;font-size:.91rem;}
   <!-- TABS -->
   <div class="d-flex border-bottom mb-3">
     <button class="tab-btn active" id="btn-calc" onclick="showTab('calc')">
-      <i class="bi bi-calculator me-1"></i>Calcular Envio
+      <i class="bi bi-calculator"></i><span class="tab-txt ms-1">Calcular Envio</span>
       <span id="ocnt" style="display:none">0</span>
     </button>
     <button class="tab-btn" id="btn-cat" onclick="showTab('cat')">
-      <i class="bi bi-grid me-1"></i>Catalogo
+      <i class="bi bi-grid"></i><span class="tab-txt ms-1">Catalogo</span>
     </button>
     <button class="tab-btn" id="btn-dash" onclick="showTab('dash')">
-      <i class="bi bi-bar-chart-line me-1"></i>Dashboard
+      <i class="bi bi-bar-chart-line"></i><span class="tab-txt ms-1">Dashboard</span>
     </button>
   </div>
 
@@ -87,23 +99,23 @@ body{background:#f4f6f9;font-size:.91rem;}
           <div class="ch"><i class="bi bi-file-text me-2"></i>Datos del pedido</div>
           <div class="card-body">
             <div class="row g-2">
-              <div class="col-md-2 col-sm-4">
+              <div class="col-6 col-sm-4 col-md-2">
                 <label class="form-label mb-1 fw-semibold small">N&deg; Pedido</label>
                 <input id="f-nped" class="form-control form-control-sm" placeholder="Ej: 00123">
               </div>
-              <div class="col-md-3 col-sm-8">
+              <div class="col-12 col-sm-8 col-md-3">
                 <label class="form-label mb-1 fw-semibold small">Cliente</label>
                 <input id="f-cliente" class="form-control form-control-sm" placeholder="Nombre del cliente">
               </div>
-              <div class="col-md-3 col-sm-6">
+              <div class="col-12 col-sm-6 col-md-3">
                 <label class="form-label mb-1 fw-semibold small">Localidad / Destino</label>
                 <input id="f-dest" class="form-control form-control-sm" placeholder="Ciudad de destino">
               </div>
-              <div class="col-md-2 col-sm-3">
+              <div class="col-6 col-sm-3 col-md-2">
                 <label class="form-label mb-1 fw-semibold small">Fecha</label>
                 <input id="f-fecha" type="date" class="form-control form-control-sm">
               </div>
-              <div class="col-md-2 col-sm-3">
+              <div class="col-6 col-sm-3 col-md-2">
                 <label class="form-label mb-1 fw-semibold small">Vendedor</label>
                 <input id="f-vendedor" class="form-control form-control-sm" placeholder="Nombre">
               </div>
@@ -151,16 +163,18 @@ body{background:#f4f6f9;font-size:.91rem;}
               <i class="bi bi-cart3 fs-2 d-block mb-2 opacity-30"></i>
               Busca productos arriba para armar el pedido
             </div>
+            <div class="table-responsive">
             <table class="table table-sm mb-0" id="order-table" style="display:none">
               <thead class="table-light">
                 <tr>
-                  <th>Codigo</th><th>Descripcion</th><th>Categoria envio</th>
-                  <th class="text-center" style="width:90px">Cantidad</th>
-                  <th style="width:40px"></th>
+                  <th>Codigo</th><th>Descripcion</th><th class="d-none d-sm-table-cell">Categoria envio</th>
+                  <th class="text-center" style="width:80px">Cant.</th>
+                  <th style="width:36px"></th>
                 </tr>
               </thead>
               <tbody id="order-body"></tbody>
             </table>
+            </div>
           </div>
         </div>
       </div>
@@ -183,7 +197,7 @@ body{background:#f4f6f9;font-size:.91rem;}
               </div>
               <div id="margin-wrap" style="display:none" class="d-flex align-items-center gap-2">
                 <label class="mb-0 small">Costo/Venta goma:</label>
-                <input type="range" min="0" max="100" value="60" id="margin-sl" class="form-range" style="width:100px">
+                <input type="range" min="0" max="100" value="60" id="margin-sl" class="form-range flex-grow-1" style="min-width:80px;max-width:120px">
                 <span id="margin-lbl">60%</span>
               </div>
             </div>
@@ -267,7 +281,7 @@ body{background:#f4f6f9;font-size:.91rem;}
           <div class="col-md-3">
             <select id="cat-fam" class="form-select"><option value="">Todas las familias</option></select>
           </div>
-          <div class="col-md-4 d-flex align-items-center justify-content-end">
+          <div class="col-12 col-md-4 d-flex align-items-center justify-content-start justify-content-md-end">
             <span id="cat-cnt" class="text-muted small"></span>
           </div>
         </div>
@@ -284,9 +298,9 @@ body{background:#f4f6f9;font-size:.91rem;}
             <tbody id="cat-body"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
           <span class="text-muted small" id="cat-pg-info"></span>
-          <div id="cat-pg"></div>
+          <div id="cat-pg" class="d-flex flex-wrap gap-1"></div>
         </div>
       </div>
     </div>
@@ -502,7 +516,7 @@ function renderOrder() {
     '<tr>' +
     '<td><code>'+esc(p.c)+'</code></td>' +
     '<td>'+esc(p.d.substring(0,55))+'</td>' +
-    '<td><span class="bcat">'+esc(p.cn)+'</span></td>' +
+    '<td class="d-none d-sm-table-cell"><span class="bcat">'+esc(p.cn)+'</span></td>' +
     '<td class="text-center"><input type="number" class="form-control form-control-sm qty-inp d-inline-block"'+
       ' value="'+p.qty+'" min="1" data-cod="'+esc(p.c)+'"></td>' +
     '<td><button class="btn btn-sm btn-outline-danger py-0" data-cod="'+esc(p.c)+'">'+
@@ -1012,7 +1026,7 @@ function showDetail(cod) {
     '<div class="col-3"><small class="text-muted d-block">Disp. 30d</small><strong>'+p.d3.toLocaleString()+'</strong></div>'+
     '</div>'+
     '<h6>Precios de envio (por unidad)</h6>'+
-    '<table class="table table-sm"><thead class="table-light"><tr>'+
+    '<div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr>'+
     '<th>#</th><th>Agencia</th><th class="text-end">Bruto</th><th class="text-end">Neto</th>'+
     '<th>Canje</th><th>Frec.</th></tr></thead><tbody>'+
     rows.map((r,i)=>'<tr class="'+(i<3?'rank-'+(i+1):'')+'">'+
@@ -1023,7 +1037,7 @@ function showDetail(cod) {
       '<td><span class="badge bg-secondary">'+Math.round(r.ag.canje*100)+'%</span></td>'+
       '<td>'+esc(r.ag.freq)+'</td></tr>'
     ).join('')+
-    '</tbody></table></div>'+
+    '</tbody></table></div></div>'+
     '<div class="modal-footer">'+
     '<button class="btn btn-p" id="dm-add"><i class="bi bi-cart-plus me-1"></i>Agregar al pedido</button>'+
     '<button class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>'+
