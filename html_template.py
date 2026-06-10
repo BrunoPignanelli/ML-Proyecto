@@ -527,6 +527,14 @@ function getNeto(ag, uc) {
   const a = AGENCIES.find(x => x.nombre===ag);
   return b * canjeF(a ? a.canje : 0);
 }
+function getRankScore(ag, uc) {
+  const b = getBruto(ag, uc); if (b===null) return null;
+  const a = AGENCIES.find(x => x.nombre===ag);
+  const cj = a ? a.canje : 0;
+  const mode = document.querySelector('input[name="cj"]:checked').value;
+  if (mode==='A' && cj>=1.0) return b * 0.75;
+  return getNeto(ag, uc);
+}
 
 function calculate() {
   if (!order.size) { alert('Agrega productos al pedido primero.'); return; }
@@ -541,23 +549,23 @@ function doCalc() {
 
   // Modo 1
   const m1 = AGENCIES.filter(a => AG_NAMES.includes(a.nombre)).map(ag => {
-    let bru=0, net=0; const mis=[];
+    let bru=0, net=0, score=0; const mis=[];
     for (const l of lines) {
-      const b=getBruto(ag.nombre,l.uc), n=getNeto(ag.nombre,l.uc);
+      const b=getBruto(ag.nombre,l.uc), n=getNeto(ag.nombre,l.uc), s=getRankScore(ag.nombre,l.uc);
       if (b===null) mis.push(l.cat);
-      else { bru+=b*l.qty; net+=n*l.qty; }
+      else { bru+=b*l.qty; net+=n*l.qty; score+=s*l.qty; }
     }
-    return {ag, bru, net:mis.length?null:net, mis};
-  }).filter(r=>r.net!==null).sort((a,b)=>a.net-b.net||a.bru-b.bru);
+    return {ag, bru, net:mis.length?null:net, score:mis.length?null:score, mis};
+  }).filter(r=>r.net!==null).sort((a,b)=>a.score-b.score||a.bru-b.bru);
 
   // Modo 2
   let tot2=0;
   const m2 = lines.map(l => {
-    let bestAg=null, bestN=Infinity, bestB=null;
+    let bestAg=null, bestScore=Infinity, bestN=null, bestB=null;
     for (const ag of AGENCIES) {
       if (!AG_NAMES.includes(ag.nombre)) continue;
-      const n=getNeto(ag.nombre,l.uc);
-      if (n!==null && n<bestN) { bestN=n; bestB=getBruto(ag.nombre,l.uc); bestAg=ag; }
+      const s=getRankScore(ag.nombre,l.uc);
+      if (s!==null && s<bestScore) { bestScore=s; bestN=getNeto(ag.nombre,l.uc); bestB=getBruto(ag.nombre,l.uc); bestAg=ag; }
     }
     const sub = bestAg ? bestN*l.qty : null;
     if (sub!==null) tot2+=sub;
@@ -981,7 +989,7 @@ function showDetail(cod) {
   const p=CATALOG.find(x=>x.c===cod); if(!p) return;
   const rows=AGENCIES.filter(a=>AG_NAMES.includes(a.nombre))
     .map(ag=>{ const b=getBruto(ag.nombre,p.uc),n=getNeto(ag.nombre,p.uc);
-               return b!==null?{ag,b,n}:null;}).filter(Boolean).sort((a,b)=>a.n-b.n||a.b-b.b);
+               return b!==null?{ag,b,n}:null;}).filter(Boolean).sort((a,b)=>{const sa=getRankScore(a.ag.nombre,p.uc)??a.n,sb=getRankScore(b.ag.nombre,p.uc)??b.n;return sa-sb||a.b-b.b;});
   const prev=document.getElementById('det-modal'); if(prev) prev.remove();
   const el=document.createElement('div'); el.id='det-modal';
   el.innerHTML=
