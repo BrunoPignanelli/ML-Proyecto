@@ -1,5 +1,31 @@
 # CLAUDE.md
 
+## ESTADO ACTUAL Y PRÓXIMOS PASOS
+
+### Lo que está hecho y funcionando
+- **Calculadora de envíos** — busca productos, arma pedido, calcula Modo 1 (una agencia) y Modo 2 (mejor por producto), ranking con regla del 25% y toggle de canje A/B
+- **14 agencias** con precios, canje y frecuencia desde `COMPARATIVA AGENCIAS.xlsx` (hoja activa: `Costo ag. Mayo 2026`)
+- **Búsqueda accent-insensitive** con `normStr()` en autocomplete y catálogo
+- **Dashboard** con KPIs, gráficas Chart.js e historial de pedidos
+- **Supabase integration** — código 100% listo; async fetch() directo a la REST API con fallback a localStorage si no hay credenciales
+- **PWA** — `manifest.json`, `sw.js`, `icon.svg` listos; se activa automáticamente al deployar en Vercel (HTTPS)
+- **Mobile responsive** — Bootstrap 5, media query @575px, touch targets 44px, iOS no-zoom inputs, tabs icon-only en mobile, overflow-x:hidden
+
+### Pendiente — conectar Supabase (próxima sesión)
+1. Usuario crea proyecto en supabase.com y ejecuta el SQL de la sección 1 para crear la tabla `pedidos`
+2. Usuario copia `Project URL` y `anon public key` de Settings → API
+3. Crear `.env` en la raíz con `SUPABASE_URL` y `SUPABASE_KEY`
+4. Correr `python generar_html.py` → verifica que las credenciales aparecen en el HTML
+5. Deployar en Vercel con esas variables de entorno → PWA activado + historial multi-device
+
+### Pendiente — deploy a Vercel
+- Conectar el repo GitHub (`BrunoPignanelli/ML-Proyecto`, rama `brunix` o `main`) en vercel.com
+- Configurar como Static Site sin build command
+- Agregar `SUPABASE_URL` y `SUPABASE_KEY` en Settings → Environment Variables
+- El archivo servido es `petinsa_envios.html` en la raíz
+
+---
+
 ## 0. Deployment Constraint
 
 **The app must remain a static site deployable on Vercel via GitHub.**
@@ -46,14 +72,51 @@ pip install pandas openpyxl jupyter python-dotenv
 # python-dotenv is required for Supabase credential injection
 ```
 
-### Supabase Setup (one-time, manual)
-1. Create project at supabase.com → run SQL in plan file to create `pedidos` table
-2. Copy Project URL + anon key to `.env`:
+### Supabase Setup (one-time, manual) — PENDING
+
+**The Supabase integration is fully coded but not yet connected. The user still needs to:**
+
+1. Create a project at supabase.com → New Project (pick South America region)
+2. In **SQL Editor** → run this to create the table:
+
+```sql
+CREATE TABLE pedidos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  fecha TEXT,
+  nped TEXT,
+  cliente TEXT,
+  destino TEXT,
+  vendedor TEXT,
+  obs TEXT,
+  canje_modo TEXT,
+  lineas JSONB,
+  m1_agencia TEXT,
+  m1_bru NUMERIC,
+  m1_net NUMERIC,
+  m2_net NUMERIC,
+  m2_ags JSONB
+);
+
+ALTER TABLE pedidos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all" ON pedidos FOR ALL USING (true) WITH CHECK (true);
+```
+
+3. Go to **Settings → API** and copy:
+   - `Project URL` → `SUPABASE_URL`
+   - `anon public` key → `SUPABASE_KEY`
+
+4. Create `.env` in the repo root (already gitignored):
 ```
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_KEY=eyJ...
 ```
-3. `.env` is gitignored — never commit it. For Vercel, set these as environment variables in the project settings.
+
+5. Run `python generar_html.py` — this injects the credentials into the HTML at build time.
+
+6. For Vercel: add `SUPABASE_URL` and `SUPABASE_KEY` as environment variables in the Vercel project settings (Settings → Environment Variables). Then redeploy.
+
+**The code is already done:** `generar_html.py` reads the `.env` via `python-dotenv` and injects `__SUPABASE_URL__` / `__SUPABASE_KEY__` placeholders in `html_template.py`. If the URL is empty, the app falls back to `localStorage` automatically.
 
 ### PWA Install (after deploying to Vercel)
 - **Android Chrome:** tap "Instalar app" banner or menu → "Agregar a pantalla de inicio"
