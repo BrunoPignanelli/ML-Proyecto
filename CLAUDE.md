@@ -12,11 +12,11 @@
 - **Mobile responsive** — Bootstrap 5, media query @575px, touch targets 44px, iOS no-zoom inputs, tabs icon-only en mobile, overflow-x:hidden
 - **Costo verdadero** — nueva columna en Modo 1 y lógica de ranking: `bruto × (1 - 0.25 × canje)`. Diferencia tres métricas: bruto (precio lista), neto (cashflow), costo (costo económico real considerando que las cubiertas de canje tienen markup 25%)
 
-### Pendiente — deploy a Vercel
-- Conectar el repo GitHub (`BrunoPignanelli/ML-Proyecto`, rama `brunix` o `main`) en vercel.com
-- Configurar como Static Site sin build command
-- Agregar `SUPABASE_URL` y `SUPABASE_KEY` en Settings → Environment Variables (mismos valores que el `.env` local)
-- El archivo servido es `petinsa_envios.html` en la raíz
+### Deploy — DONE
+- **URL de producción:** `ml-proyecto.vercel.app/petinsa_envios.html`
+- Repo `BrunoPignanelli/ML-Proyecto` rama `main` conectado a Vercel — cada merge a `main` redeploya automáticamente
+- Variables de entorno `SUPABASE_URL` y `SUPABASE_KEY` configuradas en Vercel
+- PWA activo en producción (HTTPS) — instalable desde Chrome/Safari en el teléfono
 
 ---
 
