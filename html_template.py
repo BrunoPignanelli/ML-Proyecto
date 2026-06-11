@@ -90,9 +90,33 @@ body{background:#f4f6f9;font-size:.91rem;}
   .cat-tr:hover{background:transparent!important;}
   .btn-p:hover{background:var(--azul)!important;}
 }
+/* Login overlay */
+#login-overlay{position:fixed;inset:0;background:var(--azul);z-index:9999;display:flex;align-items:center;justify-content:center;}
+#login-card{background:#fff;border-radius:12px;padding:2rem;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.25);}
+#login-card .logo{font-size:1.5rem;font-weight:700;color:var(--azul);margin-bottom:.25rem;}
+#login-card .sub{font-size:.85rem;color:#666;margin-bottom:1.5rem;}
 </style>
 </head>
 <body>
+
+<!-- LOGIN OVERLAY -->
+<div id="login-overlay" style="display:none">
+  <div id="login-card">
+    <div class="logo"><i class="bi bi-truck me-2"></i>PETINSA</div>
+    <div class="sub">Sistema de Envios &mdash; Iniciar sesion</div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold small">Email</label>
+      <input id="l-email" type="email" class="form-control" placeholder="usuario@petinsa.com" autocomplete="username">
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold small">Contrasena</label>
+      <input id="l-pass" type="password" class="form-control" placeholder="••••••••" autocomplete="current-password"
+             onkeydown="if(event.key===\'Enter\')doLogin()">
+    </div>
+    <div id="l-err" class="text-danger small mb-2" style="display:none"></div>
+    <button class="btn btn-p w-100" id="l-btn" onclick="doLogin()">Ingresar</button>
+  </div>
+</div>
 
 <!-- NAVBAR -->
 <nav class="navbar navbar-dark px-3 py-2 mb-0">
@@ -100,6 +124,12 @@ body{background:#f4f6f9;font-size:.91rem;}
     <i class="bi bi-truck me-2"></i>PETINSA<span class="d-none d-sm-inline"> &mdash; Sistema de Envios</span>
   </span>
   <span class="text-white-50 small d-none d-sm-inline">Tarifas Mayo 2026</span>
+  <div id="btn-logout" style="display:none" class="ms-auto d-flex align-items-center gap-2">
+    <span id="user-label" class="text-white-50 small d-none d-sm-inline"></span>
+    <button class="btn btn-sm btn-outline-light py-0" onclick="doLogout()">
+      <i class="bi bi-box-arrow-right me-1"></i><span class="d-none d-sm-inline">Salir</span>
+    </button>
+  </div>
 </nav>
 
 <div class="container-fluid px-3 pt-3">
@@ -1147,10 +1177,56 @@ function showDetail(cod) {
   document.getElementById('dm-add').addEventListener('click',()=>{addProduct(p);modal.hide();showTab('calc');});
 }
 
+// ── Auth ──────────────────────────────────────────────────────────────────
+const AUTH_KEY = 'petinsa_session';
+
+async function doLogin() {
+  const email = $('l-email').value.trim();
+  const pass  = $('l-pass').value;
+  const err   = $('l-err');
+  const btn   = $('l-btn');
+  if (!email || !pass) { err.textContent='Ingresa email y contrasena.'; err.style.display=''; return; }
+  btn.disabled = true; btn.textContent = 'Ingresando...';
+  err.style.display = 'none';
+  try {
+    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const data = await r.json();
+    if (!r.ok) { err.textContent = data.error_description || data.msg || 'Usuario o contrasena incorrectos.'; err.style.display=''; return; }
+    const role = data.user?.user_metadata?.role || 'tenant';
+    sessionStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.access_token, role, email }));
+    applySession({ role, email });
+    loadOrders().then(orders => { renderKPIs(orders); });
+  } catch(e) {
+    err.textContent = 'Error de conexion. Intenta nuevamente.'; err.style.display='';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Ingresar';
+  }
+}
+
+function applySession(session) {
+  $('login-overlay').style.display = 'none';
+  $('btn-dash').style.display = session.role === 'admin' ? '' : 'none';
+  $('btn-logout').style.display = '';
+  $('user-label').textContent = session.email;
+}
+
+function doLogout() {
+  sessionStorage.removeItem(AUTH_KEY);
+  location.reload();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 $('f-fecha').value = today();
 filterCat();
-loadOrders().then(orders => { renderKPIs(orders); });
+(function checkSession() {
+  const s = sessionStorage.getItem(AUTH_KEY);
+  if (s) { applySession(JSON.parse(s)); loadOrders().then(orders => { renderKPIs(orders); }); }
+  else { $('login-overlay').style.display = 'flex'; }
+})();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>

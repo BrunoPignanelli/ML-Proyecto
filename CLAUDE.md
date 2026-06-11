@@ -11,12 +11,22 @@
 - **PWA** — `manifest.json`, `sw.js`, `icon.svg` listos; se activa automáticamente al deployar en Vercel (HTTPS)
 - **Mobile responsive** — Bootstrap 5, media query @575px, touch targets 44px, iOS no-zoom inputs, tabs icon-only en mobile, overflow-x:hidden
 - **Costo verdadero** — nueva columna en Modo 1 y lógica de ranking: `bruto × (1 - 0.25 × canje)`. Diferencia tres métricas: bruto (precio lista), neto (cashflow), costo (costo económico real considerando que las cubiertas de canje tienen markup 25%)
+- **Autenticación** — login con email/password vía Supabase Auth. Rol `admin` ve todo (incluyendo Dashboard); rol `tenant` ve solo Calcular Envio y Catálogo. Sesión en sessionStorage (se limpia al cerrar el tab). Botón "Salir" en navbar.
 
 ### Deploy — DONE
 - **URL de producción:** `ml-proyecto.vercel.app/petinsa_envios.html`
 - Repo `BrunoPignanelli/ML-Proyecto` rama `main` conectado a Vercel — cada merge a `main` redeploya automáticamente
 - Variables de entorno `SUPABASE_URL` y `SUPABASE_KEY` configuradas en Vercel
 - PWA activo en producción (HTTPS) — instalable desde Chrome/Safari en el teléfono
+
+### Usuarios Supabase Auth (creados 2026-06-11)
+| Email | Role |
+|---|---|
+| brunixbruno1010@gmail.com | admin |
+| ddaronch@petinsa.com.uy | admin |
+| priscilagerlach9@gmail.com | admin |
+
+Para crear nuevos usuarios (tenant o admin): usar el service role key vía `POST /auth/v1/admin/users` con `user_metadata: {"role": "admin"|"tenant"}`. Ver memory/reference_supabase.md para credenciales.
 
 ---
 
