@@ -3,25 +3,19 @@
 ## ESTADO ACTUAL Y PRÓXIMOS PASOS
 
 ### Lo que está hecho y funcionando
-- **Calculadora de envíos** — busca productos, arma pedido, calcula Modo 1 (una agencia) y Modo 2 (mejor por producto), ranking con regla del 25% y toggle de canje A/B
+- **Calculadora de envíos** — busca productos, arma pedido, calcula Modo 1 (una agencia) y Modo 2 (mejor por producto), ranking por costo verdadero y toggle de canje A/B
 - **14 agencias** con precios, canje y frecuencia desde `COMPARATIVA AGENCIAS.xlsx` (hoja activa: `Costo ag. Mayo 2026`)
 - **Búsqueda accent-insensitive** con `normStr()` en autocomplete y catálogo
 - **Dashboard** con KPIs, gráficas Chart.js e historial de pedidos
-- **Supabase integration** — código 100% listo; async fetch() directo a la REST API con fallback a localStorage si no hay credenciales
+- **Supabase integration** — conectado y funcionando; tabla `pedidos` creada; credenciales inyectadas en `.env` y en el HTML generado; fallback a localStorage si no hay credenciales
 - **PWA** — `manifest.json`, `sw.js`, `icon.svg` listos; se activa automáticamente al deployar en Vercel (HTTPS)
 - **Mobile responsive** — Bootstrap 5, media query @575px, touch targets 44px, iOS no-zoom inputs, tabs icon-only en mobile, overflow-x:hidden
-
-### Pendiente — conectar Supabase (próxima sesión)
-1. Usuario crea proyecto en supabase.com y ejecuta el SQL de la sección 1 para crear la tabla `pedidos`
-2. Usuario copia `Project URL` y `anon public key` de Settings → API
-3. Crear `.env` en la raíz con `SUPABASE_URL` y `SUPABASE_KEY`
-4. Correr `python generar_html.py` → verifica que las credenciales aparecen en el HTML
-5. Deployar en Vercel con esas variables de entorno → PWA activado + historial multi-device
+- **Costo verdadero** — nueva columna en Modo 1 y lógica de ranking: `bruto × (1 - 0.25 × canje)`. Diferencia tres métricas: bruto (precio lista), neto (cashflow), costo (costo económico real considerando que las cubiertas de canje tienen markup 25%)
 
 ### Pendiente — deploy a Vercel
 - Conectar el repo GitHub (`BrunoPignanelli/ML-Proyecto`, rama `brunix` o `main`) en vercel.com
 - Configurar como Static Site sin build command
-- Agregar `SUPABASE_URL` y `SUPABASE_KEY` en Settings → Environment Variables
+- Agregar `SUPABASE_URL` y `SUPABASE_KEY` en Settings → Environment Variables (mismos valores que el `.env` local)
 - El archivo servido es `petinsa_envios.html` en la raíz
 
 ---
@@ -72,51 +66,19 @@ pip install pandas openpyxl jupyter python-dotenv
 # python-dotenv is required for Supabase credential injection
 ```
 
-### Supabase Setup (one-time, manual) — PENDING
+### Supabase Setup — DONE
 
-**The Supabase integration is fully coded but not yet connected. The user still needs to:**
+Supabase está conectado. Proyecto: `tfdxcjbxmrhrcjgbknnt.supabase.co`. Tabla `pedidos` creada con RLS habilitado y política `allow_all`. Credenciales en `.env` local (gitignored) e inyectadas en el HTML generado.
 
-1. Create a project at supabase.com → New Project (pick South America region)
-2. In **SQL Editor** → run this to create the table:
+Para regenerar el HTML con las credenciales (siempre correr esto después de cambiar `html_template.py`):
 
-```sql
-CREATE TABLE pedidos (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  fecha TEXT,
-  nped TEXT,
-  cliente TEXT,
-  destino TEXT,
-  vendedor TEXT,
-  obs TEXT,
-  canje_modo TEXT,
-  lineas JSONB,
-  m1_agencia TEXT,
-  m1_bru NUMERIC,
-  m1_net NUMERIC,
-  m2_net NUMERIC,
-  m2_ags JSONB
-);
-
-ALTER TABLE pedidos ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON pedidos FOR ALL USING (true) WITH CHECK (true);
+```bash
+python3 generar_html.py
 ```
 
-3. Go to **Settings → API** and copy:
-   - `Project URL` → `SUPABASE_URL`
-   - `anon public` key → `SUPABASE_KEY`
+`generar_html.py` lee el `.env` via `python-dotenv` e inyecta `__SUPABASE_URL__` / `__SUPABASE_KEY__` en el HTML. Si `SUPABASE_URL` está vacío, el app cae back a `localStorage` automáticamente.
 
-4. Create `.env` in the repo root (already gitignored):
-```
-SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_KEY=eyJ...
-```
-
-5. Run `python generar_html.py` — this injects the credentials into the HTML at build time.
-
-6. For Vercel: add `SUPABASE_URL` and `SUPABASE_KEY` as environment variables in the Vercel project settings (Settings → Environment Variables). Then redeploy.
-
-**The code is already done:** `generar_html.py` reads the `.env` via `python-dotenv` and injects `__SUPABASE_URL__` / `__SUPABASE_KEY__` placeholders in `html_template.py`. If the URL is empty, the app falls back to `localStorage` automatically.
+Para Vercel: agregar `SUPABASE_URL` y `SUPABASE_KEY` en Settings → Environment Variables (mismos valores que el `.env` local). Luego redeploy.
 
 ### PWA Install (after deploying to Vercel)
 - **Android Chrome:** tap "Instalar app" banner or menu → "Agregar a pantalla de inicio"
@@ -197,11 +159,13 @@ build_prices(MAPPING)
         └─► JSON-embedded in HTML or used directly in notebook
 ```
 
-**Canje formula:**
+**Canje formulas (tres métricas diferenciadas):**
 ```python
-neto = bruto * (1 - canje)  # Interpretación A (implemented)
-# Interpretación B (pending): neto = bruto * (1 - canje * (1 - margen_costo_goma))
+neto  = bruto * (1 - canje)           # Cashflow: plata que sale de la empresa
+costo = bruto * (1 - 0.25 * canje)    # Costo verdadero: considera que cubiertas de canje tienen markup 25%
+# Interpretación B (pendiente): neto = bruto * (1 - canje * (1 - margen_costo_goma))
 ```
+El ranking en Modo 1 y Modo 2 usa `costo` (costo verdadero). La columna "Total neto" sigue mostrando el cashflow.
 
 ### Naming Conventions
 
@@ -272,8 +236,8 @@ GONFER's raw prices in the Excel are pre-IVA. The `IVA = 1.22` multiplier is app
 ```
 Pattern 1 catches agrícola formats before pattern 2 to avoid grabbing the wrong number (e.g., in `14.9 - 24`, pattern 2 would grab `9` not `24`).
 
-### Agencies with 100% canje always rank #1 under Interpretación A
-SELEGUIN, TRUJILLO, and Franchi have `canje=1.0`, so their `neto = 0`. This is mathematically correct but operationally misleading. Interpretación B (with `margen_costo_goma` slider) is the planned fix — **not yet implemented in the HTML app**.
+### Agencies with 100% canje — costo verdadero resuelve el problema
+SELEGUIN, TRUJILLO, y Franchi tienen `canje=1.0` → `neto = $0`. Antes siempre rankeaban #1, lo cual era engañoso. Ahora el ranking usa `costo = bruto × 0.75` para estas agencias, reflejando que las cubiertas entregadas en canje tienen un costo real del 75% del precio lista. Interpretación B (slider `margen_costo_goma`) sigue pendiente como mejora futura.
 
 ### 8 agencies lack explicit mapping rules in the notebook's original `matcher.py` spec
 BULEVAR, PERICO, TRUJILLO, GONFER, 3EME, Martin Escudero, Arzuaga, Franchi — their mappings exist in `MAPPING` but were originally fallback-only. In `generar_html.py`/`generar_html_data.py`, all 14 agencies now have explicit `MAPPING` entries.

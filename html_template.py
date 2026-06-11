@@ -246,6 +246,7 @@ body{background:#f4f6f9;font-size:.91rem;}
                   <th>#</th><th>Agencia</th>
                   <th class="text-end d-none d-sm-table-cell">Total bruto</th>
                   <th class="text-end">Total neto</th>
+                  <th class="text-end d-none d-sm-table-cell">Costo</th>
                   <th>Canje</th>
                   <th class="d-none d-sm-table-cell">Frecuencia</th>
                   <th class="d-none d-sm-table-cell">Dias/sem</th>
@@ -581,13 +582,14 @@ function getNeto(ag, uc) {
   const a = AGENCIES.find(x => x.nombre===ag);
   return b * canjeF(a ? a.canje : 0);
 }
-function getRankScore(ag, uc) {
+function getCosto(ag, uc) {
   const b = getBruto(ag, uc); if (b===null) return null;
   const a = AGENCIES.find(x => x.nombre===ag);
   const cj = a ? a.canje : 0;
-  const mode = document.querySelector('input[name="cj"]:checked').value;
-  if (mode==='A' && cj>=1.0) return b * 0.75;
-  return getNeto(ag, uc);
+  return b * (1 - 0.25 * cj);
+}
+function getRankScore(ag, uc) {
+  return getCosto(ag, uc);
 }
 
 function calculate() {
@@ -603,13 +605,13 @@ function doCalc() {
 
   // Modo 1
   const m1 = AGENCIES.filter(a => AG_NAMES.includes(a.nombre)).map(ag => {
-    let bru=0, net=0, score=0; const mis=[];
+    let bru=0, net=0, cost=0, score=0; const mis=[];
     for (const l of lines) {
-      const b=getBruto(ag.nombre,l.uc), n=getNeto(ag.nombre,l.uc), s=getRankScore(ag.nombre,l.uc);
+      const b=getBruto(ag.nombre,l.uc), n=getNeto(ag.nombre,l.uc), c=getCosto(ag.nombre,l.uc), s=getRankScore(ag.nombre,l.uc);
       if (b===null) mis.push(l.cat);
-      else { bru+=b*l.qty; net+=n*l.qty; score+=s*l.qty; }
+      else { bru+=b*l.qty; net+=n*l.qty; cost+=c*l.qty; score+=s*l.qty; }
     }
-    return {ag, bru, net:mis.length?null:net, score:mis.length?null:score, mis};
+    return {ag, bru, net:mis.length?null:net, cost:mis.length?null:cost, score:mis.length?null:score, mis};
   }).filter(r=>r.net!==null).sort((a,b)=>a.score-b.score||a.bru-b.bru);
 
   // Modo 2
@@ -656,6 +658,7 @@ function renderM1(rows) {
       '<td class="fw-semibold">'+esc(r.ag.nombre)+'</td>'+
       '<td class="text-end text-muted d-none d-sm-table-cell">'+fmt(r.bru)+'</td>'+
       '<td class="text-end">'+netH+'</td>'+
+      '<td class="text-end d-none d-sm-table-cell"><span class="ptag">'+fmt(r.cost)+'</span></td>'+
       '<td><span class="badge bg-secondary">'+Math.round(r.ag.canje*100)+'%</span></td>'+
       '<td class="d-none d-sm-table-cell">'+esc(r.ag.freq)+'</td>'+
       '<td class="text-center d-none d-sm-table-cell"><span class="badge '+(r.ag.dias>=5?'bg-success':'bg-warning text-dark')+'">'+
