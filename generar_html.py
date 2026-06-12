@@ -334,13 +334,103 @@ prices_data = build_prices(MAPPING)
 print(f"  {len(agencies_meta)} agencias procesadas.")
 
 # ═══════════════════════════════════════════════════════
-# 4. SERIALIZAR JSON
+# 4. CLIENTES Y DESTINOS POR AGENCIA
 # ═══════════════════════════════════════════════════════
-catalog_json   = json.dumps(catalog,                      ensure_ascii=False, separators=(',',':'))
-agencies_json  = json.dumps(list(agencies_meta.values()), ensure_ascii=False, separators=(',',':'))
-prices_json    = json.dumps(prices_data,                  ensure_ascii=False, separators=(',',':'))
-ucats_json     = json.dumps(UNIFIED_CATS,                 ensure_ascii=False, separators=(',',':'))
-ag_names_json  = json.dumps(list(MAPPING.keys()),         ensure_ascii=False, separators=(',',':'))
+
+def parse_clientes_y_destinos():
+    import os, re as _re
+    fname = next((f for f in os.listdir('.') if 'lientes' in f and f.endswith('.xlsx')), None)
+    if not fname:
+        print("  AVISO: no se encontró el Excel de clientes — CLIENTS y AG_DESTINATIONS vacíos")
+        return [], {}
+
+    wb2 = openpyxl.load_workbook(fname, read_only=True, data_only=True)
+
+    # — Hoja 2: Clientes - dpto - radios activo (índice 1) —
+    ws_cli = wb2.worksheets[1]
+    clients = []
+    for i, row in enumerate(ws_cli.iter_rows(values_only=True)):
+        if i == 0: continue
+        cod = row[0] if len(row) > 0 else None
+        nombre = str(row[1]).strip() if len(row) > 1 and row[1] else None
+        localidad = str(row[3]).strip() if len(row) > 3 and row[3] else None
+        if nombre and localidad:
+            try: cod_int = int(float(str(cod)))
+            except: cod_int = None
+            clients.append({'cod': cod_int, 'nombre': nombre, 'localidad': localidad})
+
+    # Mapeo nombre en hoja → nombre en AGENCIES
+    AG_NAME_MAP = {
+        norm('nasazzi 900'):        'NASAZZI',
+        norm('acc br (bulevar)'):   'BULEVAR (ACC)',
+        norm('dac'):                'DAC',
+        norm('seleguin'):           'SELEGUIN',
+        norm('expreso rocha'):      'EXPRESO ROCHA',
+        norm('martin escudero'):    'Martin Escudero (Lascano)',
+        norm('franchi'):            'Franchi',
+        norm('trujillo'):           'TRUJILLO',
+        norm('megam'):              'MEGAM',
+        norm('perico'):             'PERICO',
+        norm('chambon'):            '3EME (El Chambon)',
+        norm('gonfer'):             'GONFER',
+        norm('arzuaga'):            'Arzuaga',
+    }
+
+    def split_dest(s):
+        if not s: return []
+        parts = _re.split(r',\s*|;\s*|\s+y\s+', str(s).strip())
+        return [p.strip() for p in parts if len(p.strip()) > 1]
+
+    # — Hoja 3: Destinos de agencias (índice 2) —
+    ws_dest = wb2.worksheets[2]
+    ag_dest = {}
+    cur_varias_ag = None
+
+    for i, row in enumerate(ws_dest.iter_rows(values_only=True)):
+        if i < 2: continue  # saltar encabezados
+        r = list(row) + [None] * 13
+
+        if r[0]:   # Nasazzi (col 0)
+            ag = 'NASAZZI'
+            ag_dest.setdefault(ag, []).extend(split_dest(r[0]))
+
+        if r[4]:   # Bulevar (col 4)
+            ag = 'BULEVAR (ACC)'
+            ag_dest.setdefault(ag, []).extend(split_dest(r[4]))
+
+        if r[7]:   # DAC (col 7)
+            ag = 'DAC'
+            ag_dest.setdefault(ag, []).extend(split_dest(r[7]))
+
+        if r[10]:  # nueva agencia en sección "Varias" (col 10)
+            key = norm(str(r[10]))
+            cur_varias_ag = AG_NAME_MAP.get(key)
+
+        if r[11] and cur_varias_ag:
+            ag_dest.setdefault(cur_varias_ag, []).extend(split_dest(r[11]))
+
+    # Dedup preservando orden
+    for ag in ag_dest:
+        seen = set(); deduped = []
+        for d in ag_dest[ag]:
+            if d and d not in seen: seen.add(d); deduped.append(d)
+        ag_dest[ag] = deduped
+
+    print(f"  {len(clients)} clientes cargados, {len(ag_dest)} agencias con destinos.")
+    return clients, ag_dest
+
+clients_data, ag_destinations = parse_clientes_y_destinos()
+
+# ═══════════════════════════════════════════════════════
+# 5. SERIALIZAR JSON
+# ═══════════════════════════════════════════════════════
+catalog_json       = json.dumps(catalog,                      ensure_ascii=False, separators=(',',':'))
+agencies_json      = json.dumps(list(agencies_meta.values()), ensure_ascii=False, separators=(',',':'))
+prices_json        = json.dumps(prices_data,                  ensure_ascii=False, separators=(',',':'))
+ucats_json         = json.dumps(UNIFIED_CATS,                 ensure_ascii=False, separators=(',',':'))
+ag_names_json      = json.dumps(list(MAPPING.keys()),         ensure_ascii=False, separators=(',',':'))
+clients_json       = json.dumps(clients_data,                 ensure_ascii=False, separators=(',',':'))
+ag_destinations_json = json.dumps(ag_destinations,            ensure_ascii=False, separators=(',',':'))
 
 # ═══════════════════════════════════════════════════════
 # 5. HTML TEMPLATE
@@ -1141,13 +1231,15 @@ SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
 
 # ── Substituir placeholders con JSON real ─────────────────────────────────────
 HTML = (HTML_TEMPLATE
-    .replace('__CATALOG__',      catalog_json)
-    .replace('__AGENCIES__',     agencies_json)
-    .replace('__PRICES__',       prices_json)
-    .replace('__UCATS__',        ucats_json)
-    .replace('__AG_NAMES__',     ag_names_json)
-    .replace('__SUPABASE_URL__', SUPABASE_URL)
-    .replace('__SUPABASE_KEY__', SUPABASE_KEY)
+    .replace('__CATALOG__',        catalog_json)
+    .replace('__AGENCIES__',       agencies_json)
+    .replace('__PRICES__',         prices_json)
+    .replace('__UCATS__',          ucats_json)
+    .replace('__AG_NAMES__',       ag_names_json)
+    .replace('__CLIENTS__',        clients_json)
+    .replace('__AG_DESTINATIONS__', ag_destinations_json)
+    .replace('__SUPABASE_URL__',   SUPABASE_URL)
+    .replace('__SUPABASE_KEY__',   SUPABASE_KEY)
 )
 
 out = Path('petinsa_envios.html')

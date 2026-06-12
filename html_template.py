@@ -52,6 +52,16 @@ body{background:#f4f6f9;font-size:.91rem;}
 .kpi-card{border:none!important;border-radius:12px!important;}
 .chart-wrap{position:relative;height:220px;}
 .toast-container{position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;}
+#cli-ac-box{position:absolute;z-index:9998;background:#fff;border:1px solid #ccc;
+            border-radius:0 0 8px 8px;width:100%;max-height:240px;overflow-y:auto;
+            box-shadow:0 4px 14px rgba(0,0,0,.18);top:100%;left:0;}
+.cli-ac-it{padding:.42rem .8rem;cursor:pointer;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;}
+.cli-ac-it:hover{background:var(--azul-c);}
+.cli-ac-loc{font-size:.78rem;color:#888;white-space:nowrap;margin-left:.5rem;}
+.cli-ac-new{padding:.42rem .8rem;cursor:pointer;color:var(--azul);font-size:.85rem;font-weight:600;border-top:1px solid #e0e0e0;}
+.cli-ac-new:hover{background:var(--azul-c);}
+.ag-sin-cobert{opacity:.45;}
+.dest-badge{display:inline-block;font-size:.72rem;background:#e8f0f8;color:#1a3a5c;border-radius:20px;padding:1px 7px;margin-left:.4rem;}
 @media print{
   nav,.tab-btn,#results-btns,.card-header button,#f-obs-row{display:none!important;}
   .card{box-shadow:none!important;border:1px solid #ddd!important;}
@@ -164,11 +174,15 @@ body{background:#f4f6f9;font-size:.91rem;}
               </div>
               <div class="col-12 col-sm-8 col-md-3">
                 <label class="form-label mb-1 fw-semibold small">Cliente</label>
-                <input id="f-cliente" class="form-control form-control-sm" placeholder="Nombre del cliente">
+                <div class="position-relative">
+                  <input id="f-cliente" class="form-control form-control-sm" placeholder="Nombre del cliente" autocomplete="off">
+                  <div id="cli-ac-box" style="display:none"></div>
+                </div>
               </div>
               <div class="col-12 col-sm-6 col-md-3">
                 <label class="form-label mb-1 fw-semibold small">Localidad / Destino</label>
-                <input id="f-dest" class="form-control form-control-sm" placeholder="Ciudad de destino">
+                <input id="f-dest" class="form-control form-control-sm" placeholder="Ciudad de destino" autocomplete="off">
+                <div id="dest-aviso" class="small text-warning mt-1" style="display:none"><i class="bi bi-exclamation-triangle me-1"></i>Destino no encontrado en coberturas — mostrando todas las agencias</div>
               </div>
               <div class="col-6 col-sm-3 col-md-2">
                 <label class="form-label mb-1 fw-semibold small">Fecha</label>
@@ -448,6 +462,32 @@ body{background:#f4f6f9;font-size:.91rem;}
 
 </div><!-- /container -->
 
+<!-- Modal Nuevo Cliente -->
+<div class="modal fade" id="modal-nuevo-cli" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--azul);color:#fff;padding:.75rem 1rem;">
+        <h6 class="modal-title mb-0"><i class="bi bi-person-plus me-2"></i>Nuevo cliente</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Nombre</label>
+          <input id="ncli-nombre" class="form-control form-control-sm" placeholder="Nombre del cliente">
+        </div>
+        <div class="mb-1">
+          <label class="form-label small fw-semibold">Localidad / Destino</label>
+          <input id="ncli-loc" class="form-control form-control-sm" placeholder="Ciudad de destino" onkeydown="if(event.key==='Enter')confirmarNuevoCli()">
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:.6rem 1rem;">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-p btn-sm" onclick="confirmarNuevoCli()"><i class="bi bi-check2 me-1"></i>Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast-container">
   <div id="main-toast" class="toast text-white border-0 align-items-center" role="alert">
@@ -460,11 +500,13 @@ body{background:#f4f6f9;font-size:.91rem;}
 
 <!-- ===== DATOS ===== -->
 <script>
-const CATALOG  = __CATALOG__;
-const AGENCIES = __AGENCIES__;
-const PRICES   = __PRICES__;
-const UCATS    = __UCATS__;
-const AG_NAMES = __AG_NAMES__;
+const CATALOG       = __CATALOG__;
+const AGENCIES      = __AGENCIES__;
+const PRICES        = __PRICES__;
+const UCATS         = __UCATS__;
+const AG_NAMES      = __AG_NAMES__;
+const CLIENTS       = __CLIENTS__;
+const AG_DEST       = __AG_DESTINATIONS__;
 </script>
 
 <!-- ===== LOGICA ===== -->
@@ -560,6 +602,98 @@ document.addEventListener('click', e => {
     $('ac-box').style.display='none';
 });
 
+// ── Clientes ──────────────────────────────────────────────────────────────
+const CLI_KEY = 'petinsa_clientes_v1';
+function loadCustomClients() {
+  try { return JSON.parse(localStorage.getItem(CLI_KEY)||'[]'); } catch(e) { return []; }
+}
+function saveClient(nombre, localidad) {
+  const list = loadCustomClients();
+  const n = normStr(nombre).trim();
+  const exists = list.find(c => normStr(c.nombre).trim() === n);
+  if (exists) { exists.localidad = localidad; }
+  else { list.push({ nombre: nombre.trim(), localidad: localidad.trim() }); }
+  localStorage.setItem(CLI_KEY, JSON.stringify(list));
+}
+function allClients() {
+  const custom = loadCustomClients();
+  const base = Array.isArray(CLIENTS) ? CLIENTS : [];
+  const seen = new Set(custom.map(c => normStr(c.nombre)));
+  return [...custom, ...base.filter(c => !seen.has(normStr(c.nombre)))];
+}
+
+let cliAcIdx = -1, cliAcResults = [];
+
+function cliSearch(q) {
+  const box = $('cli-ac-box');
+  if (q.length < 2) { box.style.display='none'; cliAcResults=[]; return; }
+  const ql = normStr(q);
+  cliAcResults = allClients().filter(c => normStr(c.nombre).includes(ql)).slice(0, 12);
+  const exactMatch = cliAcResults.some(c => normStr(c.nombre) === ql);
+  let html = cliAcResults.map((c,i) =>
+    '<div class="cli-ac-it" data-i="'+i+'">'+
+    '<span>'+esc(c.nombre)+'</span>'+
+    '<span class="cli-ac-loc">'+esc(c.localidad||'')+'</span></div>'
+  ).join('');
+  if (!exactMatch) {
+    html += '<div class="cli-ac-new" id="cli-ac-new"><i class="bi bi-person-plus me-1"></i>Crear cliente "<strong>'+esc(q)+'</strong>"</div>';
+  }
+  if (!html) { box.style.display='none'; return; }
+  box.innerHTML = html;
+  box.querySelectorAll('.cli-ac-it').forEach(el => {
+    el.addEventListener('mousedown', e => { e.preventDefault(); selectClient(cliAcResults[parseInt(el.dataset.i)]); });
+  });
+  const newBtn = document.getElementById('cli-ac-new');
+  if (newBtn) newBtn.addEventListener('mousedown', e => { e.preventDefault(); abrirNuevoCli(q); });
+  box.style.display = '';
+  cliAcIdx = -1;
+}
+function selectClient(c) {
+  $('f-cliente').value = c.nombre;
+  $('f-dest').value = c.localidad || '';
+  $('cli-ac-box').style.display = 'none';
+  cliAcResults = [];
+  if ($('results-section').style.display !== 'none') doCalc();
+}
+function abrirNuevoCli(nombre) {
+  $('ncli-nombre').value = nombre;
+  $('ncli-loc').value = '';
+  $('cli-ac-box').style.display = 'none';
+  new bootstrap.Modal(document.getElementById('modal-nuevo-cli')).show();
+  setTimeout(() => $('ncli-loc').focus(), 400);
+}
+function confirmarNuevoCli() {
+  const nombre = $('ncli-nombre').value.trim();
+  const loc = $('ncli-loc').value.trim();
+  if (!nombre) { $('ncli-nombre').focus(); return; }
+  saveClient(nombre, loc);
+  $('f-cliente').value = nombre;
+  $('f-dest').value = loc;
+  bootstrap.Modal.getInstance(document.getElementById('modal-nuevo-cli')).hide();
+  showToast('Cliente guardado ✓', 'success');
+  if ($('results-section').style.display !== 'none') doCalc();
+}
+const cliInp = $('f-cliente');
+cliInp.addEventListener('input', () => cliSearch(cliInp.value.trim()));
+cliInp.addEventListener('keydown', e => {
+  const n = cliAcResults.length;
+  if (e.key==='ArrowDown') { cliAcIdx=Math.min(cliAcIdx+1,n-1); hlCliAC(); e.preventDefault(); }
+  else if (e.key==='ArrowUp') { cliAcIdx=Math.max(cliAcIdx-1,0); hlCliAC(); e.preventDefault(); }
+  else if (e.key==='Enter' && cliAcIdx>=0) { selectClient(cliAcResults[cliAcIdx]); e.preventDefault(); }
+  else if (e.key==='Escape') { $('cli-ac-box').style.display='none'; }
+});
+function hlCliAC() {
+  $('cli-ac-box').querySelectorAll('.cli-ac-it').forEach((el,i) =>
+    el.style.background = i===cliAcIdx ? 'var(--azul-c)' : '');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#f-cliente') && !e.target.closest('#cli-ac-box'))
+    $('cli-ac-box').style.display='none';
+});
+$('f-dest').addEventListener('input', () => {
+  if ($('results-section').style.display !== 'none') doCalc();
+});
+
 // ── Pedido ────────────────────────────────────────────────────────────────
 function addProduct(p) {
   $('ac-box').style.display='none'; srch.value=''; acResults=[];
@@ -629,12 +763,34 @@ function calculate() {
   $('results-section').scrollIntoView({behavior:'smooth'});
 }
 
+function agVaADestino(agNombre, destino) {
+  if (!destino) return true;
+  const d = normStr(destino);
+  const dests = AG_DEST[agNombre];
+  if (!dests || !dests.length) return true; // sin datos → no filtrar
+  return dests.some(loc => {
+    const l = normStr(loc);
+    return l.includes(d) || d.includes(l);
+  });
+}
+
 function doCalc() {
   const lines = [...order.values()].map(p =>
     ({cod:p.c, desc:p.d.substring(0,55), cat:p.cn, uc:p.uc, qty:p.qty}));
+  const destino = ($('f-dest').value || '').trim();
+
+  // Agencias que van al destino (o todas si no hay destino)
+  const agsActivas = AGENCIES.filter(a =>
+    AG_NAMES.includes(a.nombre) && agVaADestino(a.nombre, destino));
+
+  // Aviso si el destino no es reconocido por ninguna agencia con datos
+  const hayFiltro = destino && AGENCIES.filter(a =>
+    AG_NAMES.includes(a.nombre) && (AG_DEST[a.nombre]||[]).length > 0
+  ).some(a => agVaADestino(a.nombre, destino));
+  $('dest-aviso') && ($('dest-aviso').style.display = (destino && !hayFiltro) ? '' : 'none');
 
   // Modo 1
-  const m1 = AGENCIES.filter(a => AG_NAMES.includes(a.nombre)).map(ag => {
+  const m1 = agsActivas.map(ag => {
     let bru=0, net=0, cost=0, score=0; const mis=[];
     for (const l of lines) {
       const b=getBruto(ag.nombre,l.uc), n=getNeto(ag.nombre,l.uc), c=getCosto(ag.nombre,l.uc), s=getRankScore(ag.nombre,l.uc);
@@ -648,8 +804,7 @@ function doCalc() {
   let tot2=0;
   const m2 = lines.map(l => {
     let bestAg=null, bestScore=Infinity, bestN=null, bestB=null;
-    for (const ag of AGENCIES) {
-      if (!AG_NAMES.includes(ag.nombre)) continue;
+    for (const ag of agsActivas) {
       const s=getRankScore(ag.nombre,l.uc);
       if (s!==null && s<bestScore) { bestScore=s; bestN=getNeto(ag.nombre,l.uc); bestB=getBruto(ag.nombre,l.uc); bestAg=ag; }
     }
@@ -851,6 +1006,8 @@ async function guardarPedido() {
       m2_ags:     [...new Set(lastM2.filter(r=>r.bestAg).map(r=>r.bestAg.nombre))],
     };
     await saveOrder(rec);
+    const _cliN = $('f-cliente').value.trim(), _cliD = $('f-dest').value.trim();
+    if (_cliN) saveClient(_cliN, _cliD);
     showToast('Pedido guardado correctamente ✓', 'success');
     await refreshDashboard();
   } catch(e) {
