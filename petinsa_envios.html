@@ -145,6 +145,9 @@ body{background:#f4f6f9;font-size:.91rem;}
       <i class="bi bi-calculator"></i><span class="tab-txt ms-1">Calcular Envio</span>
       <span id="ocnt" style="display:none">0</span>
     </button>
+    <button class="tab-btn" id="btn-scan" onclick="showTab('scan')">
+      <i class="bi bi-camera"></i><span class="tab-txt ms-1">Escanear Llanta</span>
+    </button>
     <button class="tab-btn" id="btn-cat" onclick="showTab('cat')">
       <i class="bi bi-grid"></i><span class="tab-txt ms-1">Catalogo</span>
     </button>
@@ -253,21 +256,11 @@ body{background:#f4f6f9;font-size:.91rem;}
         <!-- Canje -->
         <div class="card mb-3">
           <div class="card-body py-2">
-            <div class="d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-2 gap-sm-4">
-              <span class="fw-semibold"><i class="bi bi-percent me-1"></i>Canje:</span>
-              <div class="form-check form-check-inline mb-0">
-                <input class="form-check-input" type="radio" name="cj" id="cj-a" value="A" checked>
-                <label class="form-check-label" for="cj-a">A &mdash; Ahorro real (neto puede ser $0)</label>
-              </div>
-              <div class="form-check form-check-inline mb-0">
-                <input class="form-check-input" type="radio" name="cj" id="cj-b" value="B">
-                <label class="form-check-label" for="cj-b">B &mdash; Canje con costo de oportunidad</label>
-              </div>
-              <div id="margin-wrap" style="display:none" class="d-flex align-items-center gap-2">
-                <label class="mb-0 small">Costo/Venta goma:</label>
-                <input type="range" min="0" max="100" value="60" id="margin-sl" class="form-range flex-grow-1" style="min-width:80px;max-width:120px">
-                <span id="margin-lbl">60%</span>
-              </div>
+            <div class="d-flex flex-wrap align-items-center gap-3">
+              <span class="fw-semibold small"><i class="bi bi-percent me-1"></i>% costo mercadería sobre venta:</span>
+              <input type="range" min="0" max="100" value="60" id="margin-sl" class="form-range" style="width:140px;">
+              <span id="margin-lbl" class="fw-bold" style="min-width:2.5rem;">60%</span>
+              <span class="text-muted small">Costo real = efectivo + canje × <span id="margin-lbl2">60%</span></span>
             </div>
           </div>
         </div>
@@ -275,49 +268,22 @@ body{background:#f4f6f9;font-size:.91rem;}
         <!-- Summary cards -->
         <div class="row g-3 mb-3" id="summary-cards"></div>
 
-        <!-- Modo 1 -->
+        <!-- Ranking agencias -->
         <div class="card mb-3">
-          <div class="ch"><i class="bi bi-building me-2"></i>Modo 1 &mdash; Todo en una sola agencia</div>
+          <div class="ch"><i class="bi bi-trophy me-2"></i>Ranking de agencias para este pedido</div>
           <div class="card-body p-0">
             <div class="table-responsive">
               <table class="table table-sm table-hover mb-0">
                 <thead class="table-light"><tr>
                   <th>#</th><th>Agencia</th>
-                  <th class="text-end d-none d-sm-table-cell">Total bruto</th>
-                  <th class="text-end">Total neto</th>
-                  <th class="text-end d-none d-sm-table-cell">Costo</th>
+                  <th class="text-end d-none d-sm-table-cell">Tarifa bruta</th>
+                  <th class="text-end d-none d-sm-table-cell">Efectivo</th>
+                  <th class="text-end">Costo real</th>
                   <th>Canje</th>
                   <th class="d-none d-sm-table-cell">Frecuencia</th>
                   <th class="d-none d-sm-table-cell">Dias/sem</th>
                 </tr></thead>
                 <tbody id="m1-body"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Modo 2 -->
-        <div class="card mb-3">
-          <div class="ch"><i class="bi bi-diagram-3 me-2"></i>Modo 2 &mdash; Mejor agencia por producto</div>
-          <div class="card-body p-0">
-            <div class="table-responsive">
-              <table class="table table-sm table-hover mb-0">
-                <thead class="table-light"><tr>
-                  <th>Codigo</th><th>Descripcion</th><th>Categoria</th>
-                  <th class="text-center">Cant.</th>
-                  <th>Mejor Agencia</th>
-                  <th class="text-end">$/u neto</th>
-                  <th class="text-end">Subtotal</th>
-                  <th>Frecuencia</th>
-                </tr></thead>
-                <tbody id="m2-body"></tbody>
-                <tfoot>
-                  <tr class="table-light fw-bold">
-                    <td colspan="6" class="text-end">Total Modo 2:</td>
-                    <td class="text-end ptag" id="m2-total">-</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
           </div>
@@ -339,6 +305,59 @@ body{background:#f4f6f9;font-size:.91rem;}
       </div><!-- /results -->
     </div><!-- /row -->
   </div><!-- /tab-calc -->
+
+  <!-- ===== TAB ESCANEAR LLANTA ===== -->
+  <div id="tab-scan" style="display:none">
+    <div class="row g-3">
+
+      <!-- Captura -->
+      <div class="col-12">
+        <div class="card">
+          <div class="ch"><i class="bi bi-camera me-2"></i>Escanear llanta</div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Sacá una foto o subí una imagen de la llanta. El sistema lee el código (ej: <strong>205/55 R16</strong>) y busca el producto en el catálogo.</p>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              <!-- En mobile abre la camara; en desktop abre el selector de archivo -->
+              <label class="btn btn-p" for="scan-input" style="cursor:pointer;min-height:44px;display:flex;align-items:center;">
+                <i class="bi bi-camera me-2"></i>Tomar / subir foto
+              </label>
+              <input id="scan-input" type="file" accept="image/*" capture="environment" style="display:none">
+              <button class="btn btn-warning fw-bold" id="scan-btn" onclick="analizarLlanta()" disabled style="min-height:44px;">
+                <i class="bi bi-cpu me-1"></i>Analizar con IA
+              </button>
+            </div>
+            <!-- Preview -->
+            <div id="scan-preview-wrap" style="display:none" class="mb-3">
+              <img id="scan-preview" src="" alt="preview" class="img-fluid rounded" style="max-height:280px;object-fit:contain;border:2px solid var(--azul-c);">
+            </div>
+            <!-- Resultado lectura -->
+            <div id="scan-result" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Productos encontrados -->
+      <div class="col-12">
+        <div id="scan-productos" style="display:none">
+          <div class="card">
+            <div class="ch" id="scan-prod-title"><i class="bi bi-list-ul me-2"></i>Productos encontrados</div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                  <thead class="table-light"><tr>
+                    <th>Codigo</th><th>Descripcion</th><th>Familia</th>
+                    <th class="text-center">Stock</th><th></th>
+                  </tr></thead>
+                  <tbody id="scan-prod-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /tab-scan -->
 
   <!-- ===== TAB CATALOGO ===== -->
   <div id="tab-cat" style="display:none">
@@ -442,9 +461,8 @@ body{background:#f4f6f9;font-size:.91rem;}
               <thead class="table-light"><tr>
                 <th>Fecha</th><th>N&deg; Ped.</th><th>Cliente</th><th>Destino</th>
                 <th>Vendedor</th><th>Productos</th>
-                <th class="text-end">Neto M1</th>
-                <th class="text-end">Neto M2</th>
-                <th>Agencia M1</th><th></th>
+                <th class="text-end">Total neto</th>
+                <th>Agencia</th><th></th>
               </tr></thead>
               <tbody id="hist-body"></tbody>
             </table>
@@ -510,11 +528,11 @@ const AG_DEST       = {"NASAZZI":["Salto","Paysandú","Young","Guichon","Cardono
 const order = new Map();
 let catFiltered = [], catPage = 1;
 const PG = 25;
-let lastM1 = [], lastM2 = [], lastTot2 = 0, lastTot1 = 0;
+let lastM1 = [], lastTot1 = 0;
 let chartInstances = {};
 const LS_KEY = 'petinsa_orders_v1';
-const SUPABASE_URL = '';
-const SUPABASE_KEY = '';
+const SUPABASE_URL = 'https://tfdxcjbxmrhrcjgbknnt.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_04eGP6zZL594Yf6QHzs_KA_iWtNYXHK';
 const SB_HEADERS = {
   'apikey': SUPABASE_KEY,
   'Authorization': 'Bearer ' + SUPABASE_KEY,
@@ -541,7 +559,7 @@ function showToast(msg, type='success') {
 
 // ── Tabs ─────────────────────────────────────────────────────────────────
 function showTab(t) {
-  ['calc','cat','dash'].forEach(id => {
+  ['calc','scan','cat','dash'].forEach(id => {
     $('tab-'+id).style.display = (t===id) ? '' : 'none';
     $('btn-'+id).classList.toggle('active', t===id);
   });
@@ -729,27 +747,26 @@ function renderOrder() {
 }
 
 // ── Calculo ───────────────────────────────────────────────────────────────
-function canjeF(cj) {
-  const m = document.querySelector('input[name="cj"]:checked').value;
-  if (m==='A') return 1 - cj;
-  const mg = parseFloat($('margin-sl').value)/100;
-  return 1 - cj*(1-mg);
-}
+function getPctCosto() { return parseFloat($('margin-sl').value) / 100; }
 function getBruto(ag, uc) { return ((PRICES[ag]||{})[uc]) ?? null; }
-function getNeto(ag, uc) {
+// Efectivo = lo que sale de caja
+function getEfectivo(ag, uc) {
   const b = getBruto(ag, uc); if (b===null) return null;
   const a = AGENCIES.find(x => x.nombre===ag);
-  return b * canjeF(a ? a.canje : 0);
+  return b * (1 - (a ? a.canje : 0));
 }
-function getCosto(ag, uc) {
+// Costo real = efectivo + canje × %costo_mercadería
+// = bruto × (1 - canje × (1 - %costo))
+function getCostoReal(ag, uc) {
   const b = getBruto(ag, uc); if (b===null) return null;
   const a = AGENCIES.find(x => x.nombre===ag);
   const cj = a ? a.canje : 0;
-  return b * (1 - 0.25 * cj);
+  return b * (1 - cj * (1 - getPctCosto()));
 }
-function getRankScore(ag, uc) {
-  return getCosto(ag, uc);
-}
+// Mantener getNeto como alias de getCostoReal para compatibilidad interna
+function getNeto(ag, uc) { return getCostoReal(ag, uc); }
+function getCosto(ag, uc) { return getCostoReal(ag, uc); }
+function getRankScore(ag, uc) { return getCostoReal(ag, uc); }
 
 function calculate() {
   if (!order.size) { alert('Agrega productos al pedido primero.'); return; }
@@ -784,44 +801,27 @@ function doCalc() {
   ).some(a => agVaADestino(a.nombre, destino));
   $('dest-aviso') && ($('dest-aviso').style.display = (destino && !hayFiltro) ? '' : 'none');
 
-  // Modo 1
   const m1 = agsActivas.map(ag => {
-    let bru=0, net=0, cost=0, score=0; const mis=[];
+    let bru=0, efect=0, cost=0; const mis=[];
     for (const l of lines) {
-      const b=getBruto(ag.nombre,l.uc), n=getNeto(ag.nombre,l.uc), c=getCosto(ag.nombre,l.uc), s=getRankScore(ag.nombre,l.uc);
+      const b=getBruto(ag.nombre,l.uc), e=getEfectivo(ag.nombre,l.uc), c=getCostoReal(ag.nombre,l.uc);
       if (b===null) mis.push(l.cat);
-      else { bru+=b*l.qty; net+=n*l.qty; cost+=c*l.qty; score+=s*l.qty; }
+      else { bru+=b*l.qty; efect+=e*l.qty; cost+=c*l.qty; }
     }
-    return {ag, bru, net:mis.length?null:net, cost:mis.length?null:cost, score:mis.length?null:score, mis};
-  }).filter(r=>r.net!==null).sort((a,b)=>a.score-b.score||a.bru-b.bru);
+    return {ag, bru, efect:mis.length?null:efect, cost:mis.length?null:cost, mis};
+  }).filter(r=>r.cost!==null).sort((a,b)=>a.cost-b.cost||a.bru-b.bru);
 
-  // Modo 2
-  let tot2=0;
-  const m2 = lines.map(l => {
-    let bestAg=null, bestScore=Infinity, bestN=null, bestB=null;
-    for (const ag of agsActivas) {
-      const s=getRankScore(ag.nombre,l.uc);
-      if (s!==null && s<bestScore) { bestScore=s; bestN=getNeto(ag.nombre,l.uc); bestB=getBruto(ag.nombre,l.uc); bestAg=ag; }
-    }
-    const sub = bestAg ? bestN*l.qty : null;
-    if (sub!==null) tot2+=sub;
-    return {...l, bestAg, bestB, bestN, sub};
-  });
-
-  lastM1=[...m1]; lastM2=[...m2]; lastTot2=tot2;
-  lastTot1 = m1.length ? m1[0].net : 0;
+  lastM1=[...m1];
+  lastTot1 = m1.length ? m1[0].cost : 0;
 
   renderM1(m1);
-  renderM2(m2, tot2);
-  renderSummary(m1, tot2);
+  renderSummary(m1);
 }
 
-document.querySelectorAll('input[name="cj"]').forEach(r => r.addEventListener('change', () => {
-  $('margin-wrap').style.display = r.value==='B' ? '' : 'none';
-  if ($('results-section').style.display!=='none') doCalc();
-}));
 $('margin-sl').addEventListener('input', () => {
-  $('margin-lbl').textContent = $('margin-sl').value+'%';
+  const v = $('margin-sl').value + '%';
+  $('margin-lbl').textContent = v;
+  $('margin-lbl2').textContent = v;
   if ($('results-section').style.display!=='none') doCalc();
 });
 
@@ -830,15 +830,12 @@ function renderM1(rows) {
   const medals=['&#127945;','&#127946;','&#127947;'];
   $('m1-body').innerHTML = rows.map((r,i) => {
     const cls=i<3?'rank-'+(i+1):'';
-    const isZero=r.net<1;
-    const netH=isZero?'<span class="neto0">$0 <small>(canje 100%)</small></span>'
-                     :'<span class="ptag">'+fmt(r.net)+'</span>';
     return '<tr class="'+cls+'">'+
       '<td>'+(medals[i]||i+1+'.')+'</td>'+
       '<td class="fw-semibold">'+esc(r.ag.nombre)+'</td>'+
       '<td class="text-end text-muted d-none d-sm-table-cell">'+fmt(r.bru)+'</td>'+
-      '<td class="text-end">'+netH+'</td>'+
-      '<td class="text-end d-none d-sm-table-cell"><span class="ptag">'+fmt(r.cost)+'</span></td>'+
+      '<td class="text-end text-muted d-none d-sm-table-cell">'+fmt(r.efect)+'</td>'+
+      '<td class="text-end"><span class="ptag">'+fmt(r.cost)+'</span></td>'+
       '<td><span class="badge bg-secondary">'+Math.round(r.ag.canje*100)+'%</span></td>'+
       '<td class="d-none d-sm-table-cell">'+esc(r.ag.freq)+'</td>'+
       '<td class="text-center d-none d-sm-table-cell"><span class="badge '+(r.ag.dias>=5?'bg-success':'bg-warning text-dark')+'">'+
@@ -847,67 +844,40 @@ function renderM1(rows) {
   }).join('');
 }
 
-// ── Render Modo 2 ─────────────────────────────────────────────────────────
-function renderM2(rows, tot2) {
-  $('m2-body').innerHTML = rows.map(r => {
-    const isZero=r.sub!==null&&r.sub<1;
-    const subH=isZero?'<span class="neto0">$0</span>':'<span class="ptag">'+fmt(r.sub)+'</span>';
-    return '<tr>'+
-      '<td><code>'+esc(r.cod)+'</code></td>'+
-      '<td>'+esc(r.desc)+'</td>'+
-      '<td><span class="bcat">'+esc(r.cat)+'</span></td>'+
-      '<td class="text-center">'+r.qty+'</td>'+
-      '<td class="fw-semibold">'+(r.bestAg?esc(r.bestAg.nombre):'Sin precio')+'</td>'+
-      '<td class="text-end">'+fmt(r.bestN)+'</td>'+
-      '<td class="text-end">'+subH+'</td>'+
-      '<td>'+(r.bestAg?esc(r.bestAg.freq):'')+'</td>'+
-      '</tr>';
-  }).join('');
-  $('m2-total').innerHTML='<span class="ptag">'+fmt(tot2)+'</span>';
-}
-
 // ── Render Summary ────────────────────────────────────────────────────────
-function renderSummary(m1, tot2) {
+function renderSummary(m1) {
   if (!m1.length) { $('summary-cards').innerHTML=''; return; }
   const best=m1[0];
-  const diff=best.net-tot2;
-  const pct=best.net>0?Math.abs(diff/best.net*100).toFixed(1):0;
   const pedInfo=[
     $('f-nped').value?'Pedido #'+$('f-nped').value:'',
     $('f-cliente').value,
     $('f-dest').value
   ].filter(Boolean).join(' | ');
-  let diffB='';
-  if (Math.abs(diff)<1) diffB='<span class="badge bg-secondary">Mismo costo</span>';
-  else if (diff>0) diffB='<span class="badge bg-danger">M1 cuesta '+fmt(diff)+' mas</span>';
-  else diffB='<span class="badge bg-success">M1 ahorra '+fmt(-diff)+'</span>';
-
-  const m2Ags=[...new Set(lastM2.filter(r=>r.bestAg).map(r=>r.bestAg.nombre))];
   $('summary-cards').innerHTML=
-    '<div class="col-md-4"><div class="card text-white" style="background:var(--azul)">'+
+    '<div class="col-sm-6 col-lg-4"><div class="card text-white" style="background:var(--azul)">'+
     '<div class="card-body text-center py-3">'+
     (pedInfo?'<div class="small mb-1 opacity-75">'+esc(pedInfo)+'</div>':'')+
-    '<div class="small mb-1 opacity-75">Modo 1 &mdash; Mejor agencia unica</div>'+
-    '<div class="fs-3 fw-bold">'+(best.net<1?'$0 &#10003;':fmt(best.net))+'</div>'+
+    '<div class="small mb-1 opacity-75">Mejor opcion</div>'+
+    '<div class="fs-3 fw-bold">'+fmt(best.cost)+'</div>'+
     '<div class="small mt-1 fw-semibold">'+esc(best.ag.nombre)+'</div>'+
     '<div class="small opacity-75">'+esc(best.ag.freq)+' &middot; canje '+Math.round(best.ag.canje*100)+'%</div>'+
     '</div></div></div>'+
-
-    '<div class="col-md-4"><div class="card text-white" style="background:#198754">'+
+    (m1[1]?
+    '<div class="col-sm-6 col-lg-4"><div class="card bg-light">'+
     '<div class="card-body text-center py-3">'+
-    '<div class="small mb-1 opacity-75">Modo 2 &mdash; Mejor por producto</div>'+
-    '<div class="fs-3 fw-bold">'+(tot2<1?'$0 &#10003;':fmt(tot2))+'</div>'+
-    '<div class="small mt-1">'+m2Ags.length+' agencia(s)</div>'+
-    '<div class="small opacity-75">'+esc(m2Ags.slice(0,2).join(', '))+(m2Ags.length>2?'...':'')+'</div>'+
-    '</div></div></div>'+
-
-    '<div class="col-md-4"><div class="card bg-light">'+
+    '<div class="small text-muted mb-1">2da opcion</div>'+
+    '<div class="fs-4 fw-bold text-secondary">'+fmt(m1[1].cost)+'</div>'+
+    '<div class="small fw-semibold">'+esc(m1[1].ag.nombre)+'</div>'+
+    '<div class="small text-muted">'+esc(m1[1].ag.freq)+' &middot; canje '+Math.round(m1[1].ag.canje*100)+'%</div>'+
+    '</div></div></div>':'')+
+    (m1[2]?
+    '<div class="col-sm-6 col-lg-4"><div class="card bg-light">'+
     '<div class="card-body text-center py-3">'+
-    '<div class="small text-muted mb-2">Comparativa</div>'+
-    '<div class="mb-2">'+diffB+'</div>'+
-    '<div class="small text-muted">'+pct+'% diferencia</div>'+
-    '<div class="small text-muted">'+(diff>0?'Conviene dividir el envio':'Conviene una sola agencia')+'</div>'+
-    '</div></div></div>';
+    '<div class="small text-muted mb-1">3ra opcion</div>'+
+    '<div class="fs-4 fw-bold text-secondary">'+fmt(m1[2].cost)+'</div>'+
+    '<div class="small fw-semibold">'+esc(m1[2].ag.nombre)+'</div>'+
+    '<div class="small text-muted">'+esc(m1[2].ag.freq)+' &middot; canje '+Math.round(m1[2].ag.canje*100)+'%</div>'+
+    '</div></div></div>':'');
 }
 
 // ── Supabase / storage ────────────────────────────────────────────────────
@@ -978,13 +948,13 @@ async function refreshDashboard() {
 }
 
 async function guardarPedido() {
-  if (!lastM1.length && !lastM2.length) {
+  if (!lastM1.length) {
     alert('Primero calcular el envio.'); return;
   }
   const btn = document.querySelector('[onclick="guardarPedido()"]');
   if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Guardando...'; }
   try {
-    const best = lastM1.length ? lastM1[0] : null;
+    const best = lastM1[0];
     const rec = {
       fecha:    $('f-fecha').value,
       nped:     $('f-nped').value,
@@ -992,13 +962,11 @@ async function guardarPedido() {
       destino:  $('f-dest').value,
       vendedor: $('f-vendedor').value,
       obs:      $('f-obs').value,
-      canje_modo: document.querySelector('input[name="cj"]:checked').value,
+      pct_costo:  getPctCosto(),
       lineas: [...order.values()].map(p => ({cod:p.c, desc:p.d.substring(0,60), cat:p.cn, uc:p.uc, qty:p.qty})),
-      m1_agencia: best ? best.ag.nombre : null,
-      m1_bru:     best ? Math.round(best.bru) : null,
-      m1_net:     best ? Math.round(best.net) : null,
-      m2_net:     Math.round(lastTot2),
-      m2_ags:     [...new Set(lastM2.filter(r=>r.bestAg).map(r=>r.bestAg.nombre))],
+      m1_agencia: best.ag.nombre,
+      m1_bru:     Math.round(best.bru),
+      m1_net:     Math.round(best.cost),
     };
     await saveOrder(rec);
     const _cliN = $('f-cliente').value.trim(), _cliD = $('f-dest').value.trim();
@@ -1014,7 +982,7 @@ async function guardarPedido() {
 
 // ── Descargar CSV ─────────────────────────────────────────────────────────
 function downloadCSV() {
-  if (!lastM1.length && !lastM2.length) { alert('Primero calcular el envio.'); return; }
+  if (!lastM1.length) { alert('Primero calcular el envio.'); return; }
   const nped  = $('f-nped').value || 'pedido';
   const fecha = $('f-fecha').value || today();
   const rows  = [
@@ -1025,19 +993,10 @@ function downloadCSV() {
     ['Fecha',    $('f-fecha').value],
     ['Vendedor', $('f-vendedor').value],
     [],
-    ['MODO 1 - Una sola agencia'],
-    ['#','Agencia','Total Bruto','Total Neto','Canje %','Frecuencia','Dias/sem'],
-    ...lastM1.map((r,i)=>[i+1,r.ag.nombre,Math.round(r.bru),Math.round(r.net),
+    ['Ranking de agencias'],
+    ['#','Agencia','Tarifa Bruta','Efectivo','Costo Real','Canje %','Frecuencia','Dias/sem'],
+    ...lastM1.map((r,i)=>[i+1,r.ag.nombre,Math.round(r.bru),Math.round(r.efect),Math.round(r.cost),
                           Math.round(r.ag.canje*100)+'%',r.ag.freq,r.ag.dias]),
-    [],
-    ['MODO 2 - Por producto'],
-    ['Codigo','Descripcion','Categoria','Cantidad','Mejor Agencia','Precio neto/u','Subtotal','Frecuencia'],
-    ...lastM2.map(r=>[r.cod,'"'+r.desc.replace(/"/g,'""')+'"',r.cat,r.qty,
-                      r.bestAg?r.bestAg.nombre:'Sin precio',
-                      r.bestN!==null?Math.round(r.bestN):'',
-                      r.sub!==null?Math.round(r.sub):'',
-                      r.bestAg?r.bestAg.freq:'']),
-    ['','','','','','Total',Math.round(lastTot2),''],
   ];
   const csv = '﻿' + rows.map(r => r.join(',')).join('\r\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
@@ -1162,7 +1121,6 @@ function renderHistorial(orders) {
     '<td>'+esc(o.vendedor||'-')+'</td>'+
     '<td class="text-center">'+(o.lineas?o.lineas.length:0)+'</td>'+
     '<td class="text-end ptag">'+(o.m1_net!==null?fmt(o.m1_net):'-')+'</td>'+
-    '<td class="text-end">'+(o.m2_net!==null?fmt(o.m2_net):'-')+'</td>'+
     '<td>'+esc(o.m1_agencia||'-')+'</td>'+
     '<td>'+
       '<button class="btn btn-xs btn-sm btn-outline-danger py-0" data-id="'+o.id+'" onclick="borrarOrden('+o.id+')">'+
@@ -1195,13 +1153,12 @@ async function exportHistorial() {
   if (!orders.length) { alert('No hay pedidos guardados.'); return; }
   const rows = [
     ['Fecha','N Pedido','Cliente','Destino','Vendedor','Productos',
-     'Neto M1','Bruto M1','Neto M2','Agencia M1','Agencias M2','Canje','Obs'],
+     'Costo Real','Tarifa Bruta','Agencia','% Costo mercadería','Obs'],
     ...orders.map(o=>[
       o.fecha, o.nped, '"'+(o.cliente||'').replace(/"/g,'""')+'"',
       '"'+(o.destino||'').replace(/"/g,'""')+'"',
       o.vendedor, o.lineas?o.lineas.length:0,
-      o.m1_net, o.m1_bru, o.m2_net, o.m1_agencia,
-      '"'+(o.m2_ags||[]).join(';')+'"', o.canje_modo,
+      o.m1_net, o.m1_bru, o.m1_agencia, o.pct_costo!=null?Math.round(o.pct_costo*100)+'%':'',
       '"'+(o.obs||'').replace(/"/g,'""')+'"',
     ])
   ];
@@ -1284,8 +1241,8 @@ $('cat-fam').addEventListener('change', filterCat);
 function showDetail(cod) {
   const p=CATALOG.find(x=>x.c===cod); if(!p) return;
   const rows=AGENCIES.filter(a=>AG_NAMES.includes(a.nombre))
-    .map(ag=>{ const b=getBruto(ag.nombre,p.uc),n=getNeto(ag.nombre,p.uc);
-               return b!==null?{ag,b,n}:null;}).filter(Boolean).sort((a,b)=>{const sa=getRankScore(a.ag.nombre,p.uc)??a.n,sb=getRankScore(b.ag.nombre,p.uc)??b.n;return sa-sb||a.b-b.b;});
+    .map(ag=>{ const b=getBruto(ag.nombre,p.uc),e=getEfectivo(ag.nombre,p.uc),c=getCostoReal(ag.nombre,p.uc);
+               return b!==null?{ag,b,e,c}:null;}).filter(Boolean).sort((a,b)=>a.c-b.c||a.b-b.b);
   const prev=document.getElementById('det-modal'); if(prev) prev.remove();
   const el=document.createElement('div'); el.id='det-modal';
   el.innerHTML=
@@ -1308,13 +1265,14 @@ function showDetail(cod) {
     '</div>'+
     '<h6>Precios de envio (por unidad)</h6>'+
     '<div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr>'+
-    '<th>#</th><th>Agencia</th><th class="text-end">Bruto</th><th class="text-end">Neto</th>'+
+    '<th>#</th><th>Agencia</th><th class="text-end">Bruto</th><th class="text-end">Efectivo</th><th class="text-end">Costo real</th>'+
     '<th>Canje</th><th>Frec.</th></tr></thead><tbody>'+
     rows.map((r,i)=>'<tr class="'+(i<3?'rank-'+(i+1):'')+'">'+
       '<td>'+(['&#127945;','&#127946;','&#127947;'][i]||i+1+'.')+'</td>'+
       '<td class="fw-semibold">'+esc(r.ag.nombre)+'</td>'+
       '<td class="text-end text-muted">'+fmt(r.b)+'</td>'+
-      '<td class="text-end">'+(r.n<1?'<span class="neto0">$0</span>':'<span class="ptag">'+fmt(r.n)+'</span>')+'</td>'+
+      '<td class="text-end text-muted">'+fmt(r.e)+'</td>'+
+      '<td class="text-end"><span class="ptag">'+fmt(r.c)+'</span></td>'+
       '<td><span class="badge bg-secondary">'+Math.round(r.ag.canje*100)+'%</span></td>'+
       '<td>'+esc(r.ag.freq)+'</td></tr>'
     ).join('')+
@@ -1369,6 +1327,175 @@ function applySession(session) {
 function doLogout() {
   sessionStorage.removeItem(AUTH_KEY);
   location.reload();
+}
+
+// ── Escanear Llanta ───────────────────────────────────────────────────────
+(function() {
+  const inp = $('scan-input');
+  inp.addEventListener('change', () => {
+    const file = inp.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      $('scan-preview').src = e.target.result;
+      $('scan-preview-wrap').style.display = '';
+      $('scan-btn').disabled = false;
+      $('scan-result').style.display = 'none';
+      $('scan-productos').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  });
+})();
+
+function parsearMedidaLlanta(texto) {
+  const t = texto.replace(/\n/g,' ');
+  // Métrico: 205/55R16, 205/55 R16, LT215/85R16
+  let m = t.match(/(?:LT|P)?(\d{3})\/(\d{2,3})\s*[Rr]\s*(\d{2}(?:\.\d)?)/);
+  if (m) {
+    const width=parseInt(m[1]), profile=parseInt(m[2]), rim=parseFloat(m[3]);
+    return { spec: width+'/'+profile+' R'+rim, width, profile, rim,
+             raw: m[0].replace(/\s+/g,'') };
+  }
+  // Convencional: 7.50-16, 750-16
+  m = t.match(/(\d+)[.,](\d{2})\s*[-–]\s*(\d{2})/);
+  if (m) {
+    const rim=parseInt(m[3]);
+    return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+  }
+  // Agrícola: 14.9 - 24
+  m = t.match(/(\d{2})[.,](\d)\s*[-–]\s*(\d{2})/);
+  if (m) {
+    const rim=parseInt(m[3]);
+    return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+  }
+  return null;
+}
+
+async function analizarLlanta() {
+  const btn = $('scan-btn');
+  const file = $('scan-input').files[0];
+  if (!file) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Leyendo...';
+  $('scan-result').style.display = 'none';
+  $('scan-productos').style.display = 'none';
+
+  try {
+    // Cargar Tesseract.js dinámicamente (solo cuando se necesita)
+    if (!window.Tesseract) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/tesseract.js@v4/dist/tesseract.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando OCR...';
+
+    const result = await Tesseract.recognize(file, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text')
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>'+
+            Math.round(m.progress*100)+'%...';
+      }
+    });
+
+    const texto = result.data.text;
+    const data  = parsearMedidaLlanta(texto);
+
+    const resultEl = $('scan-result');
+    resultEl.style.display = '';
+
+    if (!data) {
+      resultEl.innerHTML =
+        '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>'+
+        'No se encontró un código de medida. Intentá con una foto más nítida y de cerca del lateral de la llanta.'+
+        '<details class="mt-2"><summary class="small">Texto detectado</summary>'+
+        '<pre class="small mt-1" style="white-space:pre-wrap;max-height:120px;overflow-y:auto">'+esc(texto)+'</pre></details></div>';
+      return;
+    }
+
+    resultEl.innerHTML =
+      '<div class="alert alert-success d-flex align-items-center gap-3 mb-0">'+
+      '<i class="bi bi-check-circle-fill fs-4 flex-shrink-0"></i>'+
+      '<div>'+
+        '<div class="fw-bold fs-5">'+esc(data.spec)+'</div>'+
+        '<div class="small text-muted">'+
+          (data.width  ? 'Ancho: <strong>'+data.width+'mm</strong> &nbsp; ' : '')+
+          (data.profile? 'Perfil: <strong>'+data.profile+'%</strong> &nbsp; ' : '')+
+          'Rodado: <strong>R'+data.rim+'</strong>'+
+        '</div>'+
+      '</div></div>';
+
+    buscarEnCatalogo(data);
+
+  } catch(e) {
+    const resultEl = $('scan-result');
+    resultEl.style.display = '';
+    resultEl.innerHTML =
+      '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>'+
+      'Error al procesar la imagen: '+esc(e.message)+'</div>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-cpu me-1"></i>Analizar';
+  }
+}
+
+function buscarEnCatalogo(data) {
+  if (!data.rim && !data.spec) { $('scan-productos').style.display='none'; return; }
+
+  const terminos = [];
+  if (data.rim)     terminos.push('r'+data.rim);
+  if (data.width)   terminos.push(String(data.width));
+  if (data.profile) terminos.push('/'+data.profile);
+  if (data.spec)    terminos.push(normStr(data.spec));
+
+  // Buscar por rodado obligatorio, + otros términos como refinamiento
+  const resultados = CATALOG.filter(p => {
+    const d = normStr(p.d);
+    // debe incluir el rodado
+    const tieneRodado = data.rim && d.includes('r'+data.rim);
+    if (!tieneRodado) return false;
+    // bonus si también tiene ancho y perfil
+    return true;
+  }).sort((a, b) => {
+    // ordenar: más términos coincidentes primero
+    const sa = terminos.filter(t => normStr(a.d).includes(t)).length;
+    const sb = terminos.filter(t => normStr(b.d).includes(t)).length;
+    return sb - sa;
+  }).slice(0, 20);
+
+  const wrap = $('scan-productos');
+  if (!resultados.length) {
+    wrap.style.display = '';
+    $('scan-prod-title').innerHTML = '<i class="bi bi-search me-2"></i>Sin coincidencias en el catálogo';
+    $('scan-prod-body').innerHTML =
+      '<tr><td colspan="5" class="text-muted text-center py-3">No se encontraron productos con esa medida.</td></tr>';
+    wrap.style.display = '';
+    return;
+  }
+
+  $('scan-prod-title').innerHTML = '<i class="bi bi-list-ul me-2"></i>Productos encontrados ('+ resultados.length +')';
+  $('scan-prod-body').innerHTML = resultados.map(p =>
+    '<tr>'+
+    '<td><code>'+esc(p.c)+'</code></td>'+
+    '<td>'+esc(p.d.substring(0,60))+'</td>'+
+    '<td><span class="bcat">'+esc(p.f)+'</span></td>'+
+    '<td class="text-center"><span class="'+(p.st>0?'text-success fw-bold':'text-danger')+'">'+p.st+'</span></td>'+
+    '<td><button class="btn btn-sm btn-p py-0" onclick="agregarDesdeScan(\''+esc(p.c)+'\')">'+
+      '<i class="bi bi-cart-plus"></i></button></td>'+
+    '</tr>'
+  ).join('');
+  wrap.style.display = '';
+}
+
+function agregarDesdeScan(cod) {
+  const p = CATALOG.find(x => x.c === cod);
+  if (!p) return;
+  addProduct(p);
+  showTab('calc');
+  showToast(p.d.substring(0,40)+' agregado al pedido', 'success');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
