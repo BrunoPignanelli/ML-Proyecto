@@ -1,7 +1,7 @@
 # Proyecto PETINSA — Recomendador de Agencias de Envío
 
 **Documento de contexto para el equipo**
-Última actualización: Mayo 2026
+Última actualización: Junio 2026 (documento vivo — refleja el estado real de la app en producción)
 
 ---
 
@@ -11,11 +11,9 @@ PETINSA, distribuidora de neumáticos, hoy elige manualmente entre **14 agencias
 
 **Objetivo:** construir un sistema que reciba un producto + cantidad y devuelva las 3 agencias más convenientes en costo neto.
 
-**Estado actual:** prototipo funcionando en Python + Streamlit con dos componentes clave:
-1. Una tabla de equivalencias **producto → categoría de envío por agencia** (ya hecha en dos versiones: la mía + la del compañero).
-2. Un motor que calcula bruto, canje, neto y ordena.
+**Estado actual (Junio 2026): app en producción en `ml-proyecto.vercel.app/petinsa_envios.html`**, instalable como PWA en el celular de los empleados de PETINSA. Incluye calculadora de envíos, escaneo de llantas por cámara (OCR), dashboard de historial, autenticación con roles, y filtro por destino.
 
-**Lo que falta:** validar las equivalencias con un trabajador de PETINSA, decidir interpretación del canje, y armar la presentación académica.
+**Lo que falta:** ver sección 13 (mejoras futuras post-piloto).
 
 ---
 
@@ -226,7 +224,63 @@ Documento que compara los dos archivos en 5 hojas: resumen ejecutivo, categoría
 
 ---
 
-## 7. Arquitectura del prototipo en código
+## 7. Pivot arquitectural: de Streamlit a app estática PWA
+
+### Por qué se abandonó Streamlit
+
+El prototipo inicial (sección anterior) usaba Python + Streamlit. Al querer deployarlo para que los empleados de PETINSA lo usaran desde el celular, apareció la restricción central:
+
+- Streamlit requiere un servidor Python corriendo → costo, mantenimiento, no gratis a largo plazo.
+- PETINSA no tiene infraestructura propia.
+- La solución debía poder correr **sin ningún servidor** para ser sostenible.
+
+**Decisión:** migrar a una **app estática**: Python corre solo en la máquina del desarrollador para generar un único archivo `petinsa_envios.html` con todos los datos embebidos como JSON. Vercel sirve ese archivo gratis como hosting estático. No hay backend en runtime.
+
+### Nueva arquitectura (la actual)
+
+```
+Máquina local (build time):
+  Excel files ──▶ generar_html.py ──▶ petinsa_envios.html
+                         │
+                  html_template.py (toda la UI/lógica JS)
+                  generar_html_data.py (clasificación de productos)
+
+Vercel (runtime):
+  petinsa_envios.html ──▶ browser del usuario
+  manifest.json, sw.js, icon.svg ──▶ PWA shell
+
+Supabase (runtime, externo):
+  Auth (login/roles) + tabla pedidos (historial)
+```
+
+### Archivos actuales
+
+| Archivo | Propósito |
+|---|---|
+| `generar_html.py` | Lee los Excel, clasifica productos, arma los JSON, inyecta en el template, genera `petinsa_envios.html` |
+| `html_template.py` | **Template activo** — toda la UI (HTML/CSS/JS). Importado por `generar_html.py`. |
+| `generar_html_data.py` | Función `classify()`, diccionarios `UNIFIED_CATS` y `MAPPING` |
+| `petinsa_envios.html` | **Output final** — nunca editar directamente |
+| `manifest.json` | PWA manifest (nombre, icono, start URL) |
+| `sw.js` | Service worker — cachea el shell para uso offline. Cache key: `petinsa-v1` |
+| `icon.svg` | Ícono de la app |
+| `.env` | Credenciales Supabase (gitignored). Sin este archivo, la app cae a localStorage. |
+
+### Cómo regenerar
+
+```bash
+python generar_html.py
+# → genera petinsa_envios.html con datos actualizados
+# Siempre correr esto después de cambiar html_template.py o los Excel
+```
+
+### Constraint que hay que respetar
+
+**Todo feature nuevo debe ser implementable en JS del lado del cliente.** Si algo requiere un servidor (ej: sincronización ERP en tiempo real), hay que evaluarlo explícitamente antes de implementar — no asumirlo como válido.
+
+---
+
+## 7b. Arquitectura del prototipo original en código (referencia histórica)
 
 ```
 proyecto/
@@ -284,6 +338,119 @@ streamlit run app_streamlit.py
 
 ---
 
+## 7c. Features de la app actual (Junio 2026)
+
+### Calculadora de envíos
+
+- El usuario busca productos por código o descripción (búsqueda accent-insensitive con `normStr()`).
+- Arma un pedido con múltiples productos y cantidades.
+- Ingresa el **destino** (localidad del cliente) → la app filtra solo las agencias que cubren esa localidad (datos desde hoja "Destinos de agencias" del Excel de clientes). Si el destino no coincide con ninguno conocido → aviso amarillo + muestra todas.
+- Ingresa o selecciona el **cliente** desde un autocomplete de 635 clientes con localidad precompletada.
+- El ranking de agencias muestra tarifa bruta, efectivo (cashflow) y **costo real** (el que se usa para ordenar).
+- **Un pedido va por una única agencia** — no hay modo de múltiples agencias (fue implementado y luego eliminado por innecesario).
+
+### Fórmula del costo real (Interpretación B implementada)
+
+Lo que en el documento original era una "decisión pendiente" (Interpretación B del canje) ya está implementado:
+
+```
+Costo real = bruto × (1 - canje × (1 - %costo_mercadería))
+Efectivo   = bruto × (1 - canje)
+```
+
+- `%costo_mercadería` es ajustable con un slider (default 60%).
+- Funciones JS: `getPctCosto()`, `getEfectivo(ag, uc)`, `getCostoReal(ag, uc)`.
+- Esto resuelve el problema de que agencias con 100% canje (SELEGUIN, TRUJILLO, Franchi) aparecían con costo = $0, lo cual era engañoso.
+
+### Escanear Llanta (OCR)
+
+Feature nuevo sin equivalente en el prototipo Streamlit:
+
+- El usuario sube una foto o abre la cámara trasera directamente (mobile).
+- **Tesseract.js v4** corre en el browser — sin API, sin costo, sin servidor.
+- Extrae texto de la imagen y busca patrones de medida con regex.
+- Devuelve productos coincidentes del catálogo con botón "Agregar al pedido".
+- Patrones cubiertos: métrico (`205/55 R16`), convencional (`7.50-16`), agrícola (`14.9-24`), con prefijo (`LT215/85R16`).
+- Limitación conocida: la calidad del OCR depende de la nitidez de la foto. Fallback: tipear la medida en el buscador del catálogo.
+
+### Dashboard (solo admins)
+
+- KPIs: pedidos del día, semana, agencia más usada.
+- Gráficas Chart.js: pedidos por agencia, evolución temporal.
+- Historial completo de pedidos guardados en Supabase.
+
+### Autenticación con roles
+
+- Login email/password vía **Supabase Auth**.
+- Rol `admin`: ve todo (Calcular Envío, Escanear Llanta, Catálogo, Dashboard).
+- Rol `tenant`: ve solo Calcular Envío, Escanear Llanta y Catálogo.
+- Sesión en `sessionStorage` — se limpia al cerrar el tab (no persiste entre sesiones).
+- Botón "Salir" en la navbar.
+
+### Supabase
+
+- Proyecto: `tfdxcjbxmrhrcjgbknnt.supabase.co`
+- Tabla: `pedidos` — guarda cada envío calculado con fecha, cliente, destino, agencia elegida, costo.
+- Fallback: si no hay credenciales Supabase, la app usa `localStorage` para el historial.
+- Credenciales: en `.env` local (gitignored) + variables de entorno en Vercel.
+
+### PWA y mobile
+
+- Instalable desde Chrome/Safari en el celular → abre full-screen como app nativa.
+- Funciona offline para el shell (service worker `sw.js`).
+- Diseño mobile-first: touch targets ≥44px, font-size 16px en inputs (iOS no-zoom), tabs con íconos en mobile, overflow-x:hidden.
+- Framework: Bootstrap 5.3.3 + Bootstrap Icons. Sin jQuery, sin React.
+
+### Deploy y CI
+
+- Repo: `BrunoPignanelli/ML-Proyecto`, rama `main` → Vercel deploya automáticamente.
+- Rama de desarrollo: `pri` → se mergea a `main` cuando está aprobado.
+- URL de producción: `ml-proyecto.vercel.app/petinsa_envios.html`
+
+---
+
+## 7d. Problemas técnicos encontrados y cómo se resolvieron
+
+### Datos sucios del ERP y Excel
+
+| Problema | Solución |
+|---|---|
+| Códigos de producto vienen como floats (`20046.0`) | `str(cod).strip().rstrip('.0')` en Python |
+| Celdas con `None`, `\xa0` (non-breaking space) | Función `norm()` en Python y `normStr()` en JS en todos los campos |
+| Precios de GONFER sin IVA | Parser multiplica por `IVA = 1.22` al leer. No aplicar de nuevo en consultas. |
+| Arzuaga tiene dos columnas para la misma categoría (Young/Paysandú vs Trinidad) | `pick_price_col()` usa la columna de Young/Paysandú. Trinidad no está expuesta en la UI. |
+| BULEVAR (ACC) tiene dos modalidades: "con levante" y "sin levante / piso" | Se usa una sola modalidad; la otra no está expuesta. |
+
+### Búsqueda con acentos
+
+Los clientes y productos tienen acentos, ñ y variaciones de capitalización. Búsquedas literales fallaban para muchos términos.
+
+**Solución:** función `normStr()` en JS que normaliza unicode (descompone y elimina diacríticos) antes de comparar. Se aplica en: buscador de productos, autocomplete de clientes, filtro por destino.
+
+### `MAPPING` duplicado
+
+La lógica de mapeo familia → categoría unificada está definida en dos lugares:
+- `generar_html_data.py` (para la clasificación en build time)
+- `generar_html.py` (legado)
+
+**Workaround actual:** actualizar ambos si cambian categorías. Deuda técnica reconocida.
+
+### Template activo vs template legado
+
+`generar_html.py` tiene una template inline (string largo) que es el código original. También importa `html_template.py` al final, que sobreescribe esa template. El import al final es el que gana — la template inline es código muerto.
+
+**Riesgo:** editar la template inline pensando que es la activa no tiene efecto. Siempre editar `html_template.py`.
+
+### Hoja del tarifario hardcodeada
+
+La hoja activa del Excel de agencias está hardcodeada como string en `generar_html.py` (`'Costo ag. Mayo 2026'`). Hay que actualizarla manualmente cada mes cuando PETINSA actualiza el tarifario.
+
+### Modo 2 (múltiples agencias por pedido)
+
+Se implementó un "Modo 2" que permitía dividir un pedido entre dos agencias. Se eliminó después porque complicaba la UI y el caso de uso real es siempre una sola agencia por pedido.
+
+---
+
 ## 8. Justificación académica (para la presentación de Aprendizaje Automático)
 
 ### Por qué reglas y no Machine Learning en la etapa 1
@@ -312,47 +479,61 @@ streamlit run app_streamlit.py
 
 ---
 
-## 9. Lo que aún tenemos que cerrar antes de la entrega
+## 9. Estado de los pendientes originales (Junio 2026)
 
-### Validaciones con un trabajador de PETINSA (15-30 min de conversación)
+### Validaciones con un trabajador de PETINSA
 
-1. **Las 70 celdas amarillas/naranjas** del archivo de equivalencias (cámaras de ACCES. OTRAS M tratadas como cubiertas, agrícolas delanteras vs traseras chicas en agencias chicas).
-2. **El umbral exacto** de rodado en agrícolas (¿24-26 incluye 24 y 26 o solo 24 y 25?).
-3. **Arzuaga**: ¿se usa más para Young/Paysandú o para Trinidad por defecto?
-4. **BULEVAR (ACC)**: ¿"con levante" o "sin levante / piso" es la modalidad por defecto?
-5. **GIGANTE**: criterio exacto para separar Camión Chico/Mediano vs Grande/Semirremolque.
-6. **Protector de Neumático**: ¿categoría separada o se fusiona con bulto/bolsa?
-7. **PASEO con 1 producto en R13-R14**: confirmar qué código exacto es.
+1. **Las 70 celdas amarillas/naranjas** — resuelto implícitamente: la app usa categorías unificadas en lugar de mapeo por agencia, eliminando la ambigüedad celda a celda.
+2. **El umbral exacto de rodado en agrícolas** — implementado según el tarifario de las agencias (el criterio fue heredado de las filas del Excel, no inventado).
+3. **Arzuaga: Young/Paysandú vs Trinidad** — ✅ decidido: `pick_price_col()` usa Young/Paysandú. Trinidad no expuesta.
+4. **BULEVAR (ACC): "con levante" vs "sin levante"** — ✅ decidido: se usa una sola modalidad.
+5. **GIGANTE: camión chico vs grande** — ✅ resuelto con el umbral de rodado 22.5" (heredado del tarifario).
+6. **Protector de Neumático** — absorbido como `bulto_general` en la categorización.
+7. **PASEO con 1 producto en R13-R14** — resuelto en la clasificación con regex de rodado.
 
-### Decisiones técnicas pendientes
+### Decisiones técnicas pendientes → estado actual
 
-- [ ] Activar la **Interpretación B** del canje con un slider para `margen_costo_goma`.
-- [ ] Completar las **reglas explícitas** para las 8 agencias que hoy usan fallback difuso (BULEVAR, PERICO, TRUJILLO, GONFER, 3EME, Martin Escudero, Arzuaga, Franchi).
-- [ ] Decidir si la tabla maestra es la del compañero o la integración de ambas.
-- [ ] Agregar **filtro por destino** y **filtro por día de la semana** (cruzar con frecuencia de retiro).
+| Pendiente original | Estado |
+|---|---|
+| Activar Interpretación B del canje con slider | ✅ Implementado. Slider default 60%, fórmula: `bruto × (1 - canje × (1 - %costo_merc))` |
+| Reglas explícitas para las 8 agencias sin reglas | ✅ Resuelto de forma diferente: capa de categorías unificadas elimina la necesidad de reglas por agencia |
+| Decidir tabla maestra (mía vs compañero) | ✅ Se usó el enfoque del compañero (16 categorías unificadas) como base. Se implementó en `generar_html_data.py`. |
+| Agregar filtro por destino | ✅ Implementado con datos de la hoja "Destinos de agencias" del Excel de clientes |
+| Filtro por día de la semana (frecuencia de retiro) | ❌ No implementado aún. Los datos de frecuencia están en el Excel pero no se exponen en la UI como filtro interactivo. |
 
 ### Entregables académicos
 
-- [ ] Documento escrito (con esta estructura).
+- [x] Documento escrito (este archivo + CLAUDE.md).
+- [x] App funcionando en producción (supera el objetivo de demo Streamlit).
 - [ ] Presentación oral (planteamiento → metodología → demo → mejoras futuras).
-- [ ] Demo en vivo de la app Streamlit con 3-4 casos representativos.
-- [ ] Diapositivas que muestren la evolución del proyecto (de catálogo→envío→fusión).
+- [ ] Diapositivas.
 
 ---
 
-## 10. Mejoras futuras (para mencionar en la presentación)
+## 10. Mejoras futuras
+
+### Ya implementadas (eran mejoras futuras, ahora son features)
+
+- ✅ Historial de pedidos con Supabase.
+- ✅ Filtro por destino.
+- ✅ Autocomplete de clientes.
+- ✅ Escaneo de llantas por cámara (OCR).
+- ✅ Dashboard con KPIs y gráficas.
+- ✅ App instalable en el celular (PWA).
+- ✅ Autenticación con roles.
 
 ### Etapa 2 — Post-piloto, con uso real
 
-- Guardar historial: medida, agencia elegida, costo estimado, fecha.
 - Comparar costo estimado vs costo real facturado → detectar desvíos.
 - Incorporar tiempos de entrega reales por agencia y destino.
 - Incorporar reclamos / errores / extravíos como variable de calidad.
 - Score compuesto: `score = w1·costo_neto + w2·tiempo_entrega + w3·reclamos`.
+- Filtro por frecuencia de retiro (día de la semana) — los datos ya están en el Excel.
+- Actualización automática del tarifario mensual (hoy es manual: cambiar el nombre de hoja hardcodeado).
 
 ### Etapa 3 — ML real
 
-- Clasificador supervisado para mapeo medida → categoría (entrenado con envíos facturados).
+- Clasificador supervisado para mapeo medida → categoría (entrenado con envíos facturados del historial en Supabase).
 - Modelo predictivo de costo final con canje real cobrado.
 - Recomendador por aprendizaje por refuerzo (maximiza utilidad a largo plazo).
 
@@ -380,15 +561,70 @@ streamlit run app_streamlit.py
 
 ## 12. Resumen de archivos del proyecto
 
-| Archivo | Autor | Para qué sirve |
-|---|---|---|
-| `COMPARATIVA_AGENCIAS.xlsx` | PETINSA | Tarifario mensual de las 14 agencias (input) |
-| `Libro1.xlsx` | PETINSA | Catálogo de 1.437 productos exportado del ERP (input) |
-| `Equivalencias_PETINSA_Agencias.xlsx` | Yo (chat con Claude) | Tabla 1.437 productos × 14 agencias con colores de confianza |
-| `Categorias_Agencias_Clasificacion_Productos.xlsx` | Compañero | Tabla con 16 categorías unificadas + clasificación de 1.437 productos |
-| `Comparacion_Categorizaciones.xlsx` | Yo (chat con Claude) | Comparación de los dos enfoques anteriores con casos a discutir |
-| `parser.py`, `matcher.py`, `recomendador.py`, `app_streamlit.py` | Yo (chat con Claude) | Código del prototipo funcional |
+### Archivos de input (PETINSA los provee)
+
+| Archivo | Para qué sirve |
+|---|---|
+| `COMPARATIVA AGENCIAS.xlsx` | Tarifario mensual de las 14 agencias. Hoja activa: `Costo ag. Mayo 2026` (actualizar mensualmente). |
+| `Libro1.xlsx` | Catálogo de 1.437 productos exportado del ERP |
+| `Clientes según departamento y Agencias con localidades.xlsx` | Hoja 2: 635 clientes con localidad. Hoja 3: cobertura por agencia por destino. |
+
+### Archivos del prototipo original (referencia histórica)
+
+| Archivo | Para qué sirve |
+|---|---|
+| `Equivalencias_PETINSA_Agencias.xlsx` | Tabla 1.437 productos × 14 agencias con colores de confianza |
+| `Categorias_Agencias_Clasificacion_Productos.xlsx` | Tabla con 16 categorías unificadas + clasificación de 1.437 productos |
+| `Comparacion_Categorizaciones.xlsx` | Comparación de los dos enfoques con casos a discutir |
+| `parser.py`, `matcher.py`, `recomendador.py`, `app_streamlit.py` | Código del prototipo Streamlit (ya no es el entregable activo) |
+
+### Archivos activos de la app (estos son los que se editan)
+
+| Archivo | Para qué sirve |
+|---|---|
+| `html_template.py` | **Todo el frontend**: HTML, CSS, JS. Se edita aquí, nunca en el HTML generado. |
+| `generar_html.py` | Lee los Excel, clasifica, inyecta datos en el template, genera `petinsa_envios.html` |
+| `generar_html_data.py` | Clasificación de productos: `classify()`, `UNIFIED_CATS`, `MAPPING` |
+| `petinsa_envios.html` | Output generado — no editar directamente |
+| `manifest.json`, `sw.js`, `icon.svg` | PWA shell — se sirven estáticamente junto al HTML |
+| `.env` | Credenciales Supabase (gitignored). Sin este, la app cae a localStorage. |
 
 ---
 
-*Si algo no se entiende o falta contexto, preguntar antes de codear/decidir. Las dos categorizaciones (mía y del compañero) no son rivales — son evolución del mismo problema. La idea es fusionar lo mejor de cada una para la entrega final.*
+## 13. Estado de producción (Junio 2026)
+
+### Deploy
+
+- **URL:** `ml-proyecto.vercel.app/petinsa_envios.html`
+- **Repo:** `BrunoPignanelli/ML-Proyecto`, rama `main` → Vercel deploya automáticamente en cada merge.
+- **Rama de desarrollo:** `pri` → se mergea a `main` cuando los cambios están aprobados.
+- Variables de entorno `SUPABASE_URL` y `SUPABASE_KEY` configuradas en Vercel (no van en el repo).
+
+### Usuarios en Supabase Auth (creados 2026-06-11)
+
+| Email | Rol |
+|---|---|
+| brunixbruno1010@gmail.com | admin |
+| ddaronch@petinsa.com.uy | admin |
+| priscilagerlach9@gmail.com | admin |
+
+Para crear nuevos usuarios: usar el service role key vía `POST /auth/v1/admin/users` con `user_metadata: {"role": "admin"|"tenant"}`.
+
+### Qué ve cada rol
+
+| Feature | admin | tenant |
+|---|---|---|
+| Calcular Envío | ✅ | ✅ |
+| Escanear Llanta | ✅ | ✅ |
+| Catálogo | ✅ | ✅ |
+| Dashboard | ✅ | ❌ |
+
+### Tareas de mantenimiento recurrentes
+
+- **Mensual:** actualizar el nombre de la hoja activa del tarifario en `generar_html.py` (`'Costo ag. Mayo 2026'`) y regenerar el HTML.
+- **Si cambian categorías o agencias:** actualizar `MAPPING` en `generar_html_data.py` Y en `generar_html.py` (están duplicados — deuda técnica conocida).
+- **Si se rompe el cache PWA:** incrementar la cache key `petinsa-v1` en `sw.js`.
+
+---
+
+*Si algo no se entiende o falta contexto, preguntar antes de codear/decidir. El entregable activo es `html_template.py` + `generar_html.py` — el prototipo Streamlit es referencia histórica, no se usa más.*
