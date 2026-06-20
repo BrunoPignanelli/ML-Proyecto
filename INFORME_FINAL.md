@@ -207,33 +207,106 @@ El flujo de trabajo del equipo separó las ramas de desarrollo (`pri`, `brunix`)
 
 ---
 
-## 4. Problemas Enfrentados
+## 4. Arquitectura de Seguridad
 
-### 4.1 Heterogeneidad de los Datos del ERP
+La aplicación maneja datos sensibles de negocio: historial de pedidos, precios, clientes y stock. Durante el desarrollo se diseñó e implementó una arquitectura de seguridad en capas que protege tanto los datos almacenados como los endpoints de la API.
+
+### 4.1 Autenticación con Roles (Supabase Auth)
+
+El acceso a la aplicación requiere autenticación con email y contraseña mediante Supabase Auth. Se definieron dos roles con permisos diferenciados:
+
+| Rol | Acceso |
+|---|---|
+| `admin` | Calculadora de envíos, Escanear Llanta, Catálogo, Dashboard completo, borrado de pedidos |
+| `tenant` | Calculadora de envíos, Escanear Llanta, Catálogo (sin Dashboard, sin borrado) |
+
+El rol se almacena en el campo `user_metadata.role` de cada usuario en Supabase Auth. El sistema lo lee del JWT al momento del login y lo usa para mostrar u ocultar secciones en la UI.
+
+Los usuarios activos del sistema son tres, todos con rol `admin`: el equipo de PETINSA que utilizará la herramienta en operaciones diarias.
+
+### 4.2 Row-Level Security (RLS) en la Base de Datos
+
+Row-Level Security es una funcionalidad de PostgreSQL que permite definir políticas de acceso a nivel de fila dentro de la propia base de datos, independientemente de quién haga la llamada a la API. Esto garantiza que incluso si la lógica del frontend es comprometida, la base de datos rechaza operaciones no autorizadas.
+
+Se habilitó RLS en todas las tablas públicas del proyecto:
+
+**Tabla `pedidos`** — Tres políticas independientes:
+
+| Política | Operación | Condición |
+|---|---|---|
+| `read_authenticated` | SELECT | Cualquier usuario con JWT válido |
+| `insert_authenticated` | INSERT | Cualquier usuario con JWT válido |
+| `delete_admin_only` | DELETE | Solo si `jwt.user_metadata.role = 'admin'` |
+
+Esta granularidad es deliberada: un empleado operativo (`tenant`) puede calcular y guardar pedidos, pero no puede borrar el historial, ni siquiera desde la consola del browser o con una llamada directa a la API.
+
+**Tabla `stock`** — RLS habilitado sin políticas explícitas, lo que equivale a denegar todo acceso directo. La tabla solo puede ser modificada por la función RPC interna del servidor (ver sección 4.3).
+
+### 4.3 Operaciones Atómicas con RPC y SECURITY DEFINER
+
+Para garantizar la consistencia entre el guardado de un pedido y el descuento del stock correspondiente, se implementó una función PostgreSQL `save_order_and_decrement_stock` que ejecuta ambas operaciones en una única transacción. Si cualquiera de los dos pasos falla (por ejemplo, stock insuficiente), toda la transacción se revierte automáticamente.
+
+Esta función utiliza el modificador `SECURITY DEFINER`, que le permite ejecutarse con los permisos del propietario de la base de datos en lugar de los del usuario que la invoca. Esto resuelve un problema de diseño: la tabla `stock` no permite escritura directa (RLS sin políticas), pero la función sí puede modificarla internamente. Los permisos de ejecución de la función están restringidos al rol `authenticated` y al `service_role`; el rol `anon` (sin autenticación) no puede llamarla.
+
+### 4.4 Separación de Claves de API
+
+Supabase maneja dos tipos de claves con privilegios radicalmente diferentes:
+
+**Clave pública (`anon key` / `publishable key`):** Se incluye en el HTML generado y está visible en el repositorio de GitHub. Esto es intencional y seguro porque, con las políticas RLS correctamente configuradas, esta clave no otorga acceso a ningún dato sin un JWT de usuario válido. Su único rol es identificar el proyecto al momento de autenticar.
+
+**Clave de servicio (`service_role key`):** Tiene acceso total a la base de datos ignorando el RLS. Esta clave nunca se incluye en el HTML ni se sube al repositorio. Vive exclusivamente en el archivo `.env` local (incluido en `.gitignore`) y se usa únicamente para operaciones administrativas puntuales, como la carga inicial del stock desde el ERP.
+
+Este principio de mínimo privilegio garantiza que una exposición accidental del código fuente no comprometa la integridad de los datos.
+
+### 4.5 Uso del JWT del Usuario en Todas las Llamadas
+
+Un error común en aplicaciones que usan Supabase desde el browser es utilizar la clave pública (`anon key`) como token de autorización en todas las llamadas, incluso después de que el usuario se autenticó. En ese escenario, las políticas RLS que requieren un usuario autenticado no funcionan porque el servidor las evalúa contra el token enviado en el header `Authorization`, no contra la sesión del cliente.
+
+En esta aplicación, todas las llamadas a la API de Supabase utilizan el JWT personal del usuario logueado como token Bearer. La función `getAuthHeaders()` recupera el token activo de `localStorage` y lo inyecta automáticamente en cada request, garantizando que el RLS funcione correctamente para cada usuario.
+
+### 4.6 Sesiones Persistentes con Refresh Token
+
+El mecanismo de sesión fue diseñado para balancear seguridad y usabilidad:
+
+- La sesión se guarda en `localStorage` (persiste entre cierres del browser, conveniente para un equipo interno).
+- Se almacena tanto el `access_token` (JWT de corta duración, 1 hora) como el `refresh_token` (larga duración).
+- Cuando el `access_token` está próximo a expirar (menos de 5 minutos), la aplicación lo renueva automáticamente en segundo plano llamando al endpoint `/auth/v1/token?grant_type=refresh_token` de Supabase. El usuario no nota ninguna interrupción.
+- Si el refresh falla (token revocado o expirado), la sesión se limpia y aparece el formulario de login.
+- El botón "Salir" limpia completamente el `localStorage`, garantizando que en una computadora compartida el usuario pueda cerrar sesión de forma definitiva.
+
+### 4.7 Cifrado en Tránsito
+
+Toda la comunicación entre el browser del usuario y los servidores (Vercel para el HTML, Supabase para los datos y la autenticación) ocurre sobre HTTPS con certificados TLS administrados por las propias plataformas. En producción, la URL `ml-proyecto.vercel.app` fuerza HTTPS automáticamente, eliminando cualquier posibilidad de comunicación en texto plano.
+
+---
+
+## 5. Problemas Enfrentados
+
+### 5.1 Heterogeneidad de los Datos del ERP
 
 El catálogo exportado del ERP presentaba inconsistencias sistemáticas. Los códigos de producto venían como números flotantes (`20046.0` en lugar de `"20046"`), las celdas podían contener `None`, strings vacíos, espacios no separables (`\xa0`) o mayúsculas inconsistentes. Cada campo debía ser normalizado antes de cualquier comparación. La solución fue una función `norm()` en Python y su equivalente `normStr()` en JavaScript, aplicadas de forma sistemática en todos los puntos de lectura y comparación.
 
-### 4.2 Imposibilidad de Comparar Categorías entre Agencias
+### 5.2 Imposibilidad de Comparar Categorías entre Agencias
 
 El problema central del proyecto, descrito en la sección 3.2, requirió el mayor trabajo analítico. No existía ninguna documentación previa que relacionara las categorías de las 14 agencias. Fue necesario leer y analizar el tarifario de cada agencia, identificar los criterios físicos subyacentes (rodado, amperaje) y construir la tabla de equivalencias completa. Este trabajo se realizó en paralelo por dos miembros del equipo con enfoques distintos, y la decisión de cuál adoptar como tabla maestra fue tomada después de una comparación formal de ambos enfoques.
 
-### 4.3 Interpretación del Canje
+### 5.3 Interpretación del Canje
 
 La fórmula del canje generó debate. Una primera versión trataba el canje como un descuento puro, lo que llevaba a que tres agencias (SELEGUIN, TRUJILLO, Franchi) con 100% de canje siempre aparecían primeras con costo = $0, independientemente del producto o cantidad. Esto era matemáticamente correcto pero operativamente engañoso. La solución fue implementar la Interpretación B con el slider de costo de mercadería, que refleja que entregar neumáticos en canje tiene un costo real para la empresa.
 
-### 4.4 Restricción de Infraestructura
+### 5.4 Restricción de Infraestructura
 
 El prototipo Streamlit, aunque funcionalmente correcto, no era viable para producción porque requería un servidor Python en ejecución permanente. PETINSA no tiene infraestructura técnica propia. La solución implicó un rediseño completo de la arquitectura —abandonar el enfoque de servidor y migrar a generación estática— lo que significó reescribir toda la lógica de Python a JavaScript del lado del cliente.
 
-### 4.5 Limitaciones del OCR en Condiciones Reales
+### 5.5 Limitaciones del OCR en Condiciones Reales
 
 El escaneo de llantas con Tesseract.js funciona bien con imágenes nítidas, pero la calidad del reconocimiento depende de las condiciones de iluminación y la nitidez de la foto. En condiciones subóptimas (fotos borrosas, llantas sucias, ángulos oblicuos), el OCR puede fallar o dar resultados incorrectos. Se implementó un fallback explícito: si el escaneo no da resultados satisfactorios, el usuario puede tipear la medida manualmente en el buscador del catálogo.
 
 ---
 
-## 5. Conclusión
+## 6. Conclusión
 
-### 5.1 Beneficios Logrados
+### 6.1 Beneficios Logrados
 
 El proyecto entregó a PETINSA una herramienta operativa concreta que transforma un proceso manual, lento y propenso a errores en una decisión objetiva, trazable y ejecutable en segundos desde el celular.
 
@@ -247,13 +320,13 @@ El proyecto entregó a PETINSA una herramienta operativa concreta que transforma
 
 **Costo operativo cero.** El stack tecnológico elegido (Vercel + Supabase free tier + Tesseract.js en browser) no genera costos recurrentes para la empresa.
 
-### 5.2 Conexión con la Materia
+### 6.2 Conexión con la Materia
 
 El proyecto ilustra un principio fundamental del aprendizaje automático: **no todo problema de optimización requiere un modelo estadístico**. Cuando la lógica de negocio es conocida, los datos están estructurados y la explicabilidad es un requisito, los sistemas basados en reglas son superiores al machine learning. La elección de cuándo aplicar ML y cuándo no es en sí misma una competencia central de la disciplina.
 
 Al mismo tiempo, el diseño del sistema fue hecho intencionalmente para facilitar la incorporación futura de ML: el historial en Supabase proveerá los datos etiquetados necesarios para entrenar un modelo de clasificación de categorías, y la arquitectura de la app está preparada para incorporar módulos de `scikit-learn` en el pipeline de generación cuando ese momento llegue.
 
-### 5.3 Trabajo Futuro
+### 6.3 Trabajo Futuro
 
 Las mejoras prioritarias identificadas para la siguiente etapa son:
 
