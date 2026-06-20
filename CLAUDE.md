@@ -6,15 +6,16 @@
 - **Calculadora de envíos** — busca productos, arma pedido, ranking de agencias por costo real (una sola agencia por pedido)
 - **Fórmula de costo real con canje** — `costo = bruto × (1 - canje × (1 - %costo_mercadería))`. Slider ajustable (default 60%). Diferencia: tarifa bruta · efectivo (cashflow) · costo real (costo económico considerando el costo de la mercadería entregada en canje).
 - **14 agencias** con precios, canje y frecuencia desde `COMPARATIVA AGENCIAS.xlsx` (hoja activa: `Costo ag. Mayo 2026`)
-- **Filtro por destino** — al ingresar la localidad del cliente, el cálculo filtra solo las agencias que cubren ese destino (datos desde hoja "Destinos de agencias" del Excel de clientes). Si no se reconoce el destino, muestra aviso y usa todas.
+- **Filtro por destino** — dropdown con los 19 departamentos de Uruguay (hardcodeado). Al seleccionar departamento, filtra agencias que cubren ese destino usando `AG_DEST`. El aviso "no encontrado" solo aparece si hay datos de cobertura Y el departamento no matchea ninguna agencia (no aparece si `AG_DEST` está vacío).
 - **Autocomplete de clientes** — 635 clientes con localidad cargados desde Excel ("Clientes - dpto - radios activo"). Al seleccionar un cliente se completa automáticamente el campo Localidad. Opción para crear nuevos clientes (se guardan en localStorage).
 - **Búsqueda accent-insensitive** con `normStr()` en todos los autocompletes y catálogo
 - **Escanear Llanta** — tab con cámara/upload de imagen. Tesseract.js (OCR, corre en el browser, sin costo) lee el código de medida (ej: 205/55 R16) y busca productos coincidentes en el catálogo. En mobile abre la cámara trasera directo.
 - **Dashboard** con KPIs, gráficas Chart.js e historial de pedidos
-- **Supabase integration** — conectado y funcionando; tabla `pedidos` creada; credenciales inyectadas en `.env` y en el HTML generado; fallback a localStorage si no hay credenciales
+- **Supabase integration** — conectado y funcionando; tablas `pedidos` y `stock` creadas; credenciales inyectadas en `.env` y en el HTML generado; fallback a localStorage si no hay credenciales
+- **Control de stock en tiempo real** — tabla `stock` en Supabase con 1.436 productos y sus stocks iniciales desde Libro1.xlsx. Al guardar un pedido, la RPC `save_order_and_decrement_stock` descuenta automáticamente el stock de cada producto en la misma transacción. Si el stock no alcanza, el pedido no se guarda y el usuario ve el error.
 - **PWA** — `manifest.json`, `sw.js`, `icon.svg` listos; se activa automáticamente al deployar en Vercel (HTTPS)
 - **Mobile responsive** — Bootstrap 5, media query @575px, touch targets 44px, iOS no-zoom inputs, tabs icon-only en mobile, overflow-x:hidden
-- **Autenticación** — login con email/password vía Supabase Auth. Rol `admin` ve todo (incluyendo Dashboard); rol `tenant` ve solo Calcular Envío, Escanear Llanta y Catálogo. Sesión en sessionStorage (se limpia al cerrar el tab). Botón "Salir" en navbar.
+- **Autenticación y sesiones persistentes** — login con email/password vía Supabase Auth. Rol `admin` ve todo (incluyendo Dashboard y borrado de pedidos); rol `tenant` ve solo Calcular Envío, Escanear Llanta y Catálogo. Sesión en `localStorage` con `refresh_token` — persiste entre cierres del browser, se renueva automáticamente antes de expirar. Botón "Salir" limpia localStorage.
 
 ### Deploy
 - **URL de producción:** `ml-proyecto.vercel.app/petinsa_envios.html`
@@ -74,7 +75,10 @@ Supabase está conectado. Proyecto: `tfdxcjbxmrhrcjgbknnt.supabase.co`. Credenci
 
 ```bash
 # Siempre correr esto después de cambiar html_template.py
-python generar_html.py
+python3 generar_html.py
+
+# Re-cargar stock inicial desde Libro1.xlsx (correr si se actualiza el Excel)
+SUPABASE_SERVICE_KEY=sb_secret_... python3 cargar_stock_inicial.py
 ```
 
 `generar_html.py` lee el `.env` via `python-dotenv` e inyecta `__SUPABASE_URL__` / `__SUPABASE_KEY__` en el HTML. Si `SUPABASE_URL` está vacío, el app cae back a `localStorage`.
@@ -112,7 +116,8 @@ python generar_html.py
 | File | Role |
 |---|---|
 | `COMPARATIVA AGENCIAS.xlsx` | Tarifas — hoja activa: `Costo ag. Mayo 2026`. Actualizar nombre de hoja mensualmente en `generar_html.py`. |
-| `Libro1.xlsx` | Catálogo ERP de PETINSA — 1.437 productos |
+| `Libro1.xlsx` | Catálogo ERP de PETINSA — 1.437 productos. También fuente del stock inicial. |
+| `cargar_stock_inicial.py` | Script one-time para seedear/re-cargar la tabla `stock` en Supabase desde Libro1.xlsx. Requiere `SUPABASE_SERVICE_KEY` en `.env`. |
 | `Clientes según departamento y Agencias con localidades.xlsx` | Hoja 2 "Clientes - dpto - radios activo": 635 clientes con localidad. Hoja 3 "Destinos de agencias": cobertura por agencia. |
 
 ### Critical Configuration
@@ -186,7 +191,38 @@ Funciones JS en `html_template.py`:
 
 ---
 
-## 6. Known Gotchas
+## 6. Seguridad
+
+### Supabase RLS (Row-Level Security)
+
+| Tabla | RLS | Políticas |
+|---|---|---|
+| `pedidos` | ✅ Habilitado | `read_authenticated` (SELECT), `insert_authenticated` (INSERT), `delete_admin_only` (DELETE solo si `jwt.user_metadata.role = 'admin'`) |
+| `stock` | ✅ Habilitado | Sin políticas directas — deny all. Solo accesible vía RPC `SECURITY DEFINER` |
+
+### Claves de API
+
+| Clave | Dónde vive | Uso |
+|---|---|---|
+| Anon key (`sb_publishable_...`) | En el HTML generado + GitHub | Identifica el proyecto; no da acceso a datos sin JWT válido |
+| Service role key (`sb_secret_...`) | Solo en `.env` local (gitignored) | Scripts locales únicamente (`cargar_stock_inicial.py`) |
+
+### Sesiones (JS)
+
+- `AUTH_KEY = 'petinsa_session'` en `localStorage`
+- Objeto guardado: `{ token, refresh, role, email, expires_at }`
+- `getAuthHeaders()` es **async** — refresca silenciosamente si `expires_at - now() < 5 min`
+- `refreshSession(refreshToken)` llama `/auth/v1/token?grant_type=refresh_token`; si falla limpia localStorage y muestra login
+- Boot `checkSession()` es **async** — intenta refresh si el token ya expiró al abrir la página
+
+### RPC
+
+- `save_order_and_decrement_stock(p_record, p_lineas)` — `SECURITY DEFINER`, solo `authenticated` y `service_role` pueden ejecutarla
+- El rol `anon` (sin login) no puede llamarla ni tocar `pedidos` ni `stock` directamente
+
+---
+
+## 7. Known Gotchas
 
 - **`MAPPING` duplicado** en `generar_html_data.py` y `generar_html.py` — actualizar ambos si cambian categorías.
 - **GONFER sin IVA** — multiplica por `IVA = 1.22` al parsear. No aplicar de nuevo en consultas.
@@ -194,3 +230,8 @@ Funciones JS en `html_template.py`:
 - **Arzuaga tiene dos columnas de precio** (Young/Paysandú vs Trinidad) — `pick_price_col()` usa la segunda. Trinidad no está expuesta.
 - **Tesseract.js en mobile**: la calidad del OCR depende de la nitidez de la foto. Si falla, el usuario puede tipear la medida manualmente en el buscador del catálogo.
 - **`.env` requerido localmente** para que las credenciales Supabase se inyecten. Sin `.env`, el HTML generado cae a localStorage.
+- **Stock en Supabase vs stock en CATALOG**: el campo `st` embebido en el HTML es un snapshot de lectura (para el tab Catálogo). El stock autoritativo y vivo está en la tabla `stock` de Supabase — solo se modifica vía la RPC al guardar pedidos.
+- **`saveOrder()` usa RPC, no REST directo**: desde 2026-06-19, guardar un pedido llama `POST /rest/v1/rpc/save_order_and_decrement_stock` en lugar de `POST /rest/v1/pedidos`. La tabla `stock` tiene RLS sin políticas — el anon key no puede escribirla directamente; solo la RPC (SECURITY DEFINER) puede.
+- **Schema real de `pedidos`**: columnas `fecha, nped, cliente, destino, vendedor, obs, canje_modo, lineas, m1_agencia, m1_bru, m1_net, m2_net, m2_ags`. No existe `pct_costo` — el campo JS homónimo no se persiste en la DB. La RPC inserta solo las columnas que existen.
+- **Destino es `<select>`, no `<input>`**: el campo `f-dest` es un `<select>` con los 19 departamentos. Los clientes cuya `localidad` sea el nombre exacto del departamento (ej: "Artigas") se auto-completan; los que tienen ciudad (ej: "Bella Union") dejan el select vacío.
+- **`SUPABASE_SERVICE_KEY` solo para scripts locales** — nunca se embebe en el HTML. Se usa únicamente en `cargar_stock_inicial.py`.

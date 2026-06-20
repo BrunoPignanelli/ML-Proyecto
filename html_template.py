@@ -184,7 +184,28 @@ body{background:#f4f6f9;font-size:.91rem;}
               </div>
               <div class="col-12 col-sm-6 col-md-3">
                 <label class="form-label mb-1 fw-semibold small">Localidad / Destino</label>
-                <input id="f-dest" class="form-control form-control-sm" placeholder="Ciudad de destino" autocomplete="off">
+                <select id="f-dest" class="form-select form-select-sm">
+                  <option value="">— Departamento —</option>
+                  <option>Artigas</option>
+                  <option>Canelones</option>
+                  <option>Cerro Largo</option>
+                  <option>Colonia</option>
+                  <option>Durazno</option>
+                  <option>Flores</option>
+                  <option>Florida</option>
+                  <option>Lavalleja</option>
+                  <option>Maldonado</option>
+                  <option>Montevideo</option>
+                  <option>Paysandú</option>
+                  <option>Río Negro</option>
+                  <option>Rivera</option>
+                  <option>Rocha</option>
+                  <option>Salto</option>
+                  <option>San José</option>
+                  <option>Soriano</option>
+                  <option>Tacuarembó</option>
+                  <option>Treinta y Tres</option>
+                </select>
                 <div id="dest-aviso" class="small text-warning mt-1" style="display:none"><i class="bi bi-exclamation-triangle me-1"></i>Destino no encontrado en coberturas — mostrando todas las agencias</div>
               </div>
               <div class="col-6 col-sm-3 col-md-2">
@@ -544,6 +565,41 @@ const SB_HEADERS = {
   'Content-Type': 'application/json',
   'Prefer': 'return=minimal'
 };
+// Returns headers with the logged-in user's JWT, refreshing silently if near expiry
+async function getAuthHeaders() {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (!raw) return SB_HEADERS;
+  let session = JSON.parse(raw);
+  if (session.refresh && session.expires_at && Date.now() > session.expires_at - 300000) {
+    session = await refreshSession(session.refresh) || session;
+  }
+  return { ...SB_HEADERS, 'Authorization': 'Bearer ' + (session.token || SUPABASE_KEY) };
+}
+async function refreshSession(refreshToken) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    const role = data.user?.user_metadata?.role || 'tenant';
+    const session = {
+      token: data.access_token,
+      refresh: data.refresh_token,
+      role,
+      email: data.user?.email || '',
+      expires_at: Date.now() + ((data.expires_in || 3600) * 1000)
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+    return session;
+  } catch(e) {
+    localStorage.removeItem(AUTH_KEY);
+    $('login-overlay').style.display = 'flex';
+    return null;
+  }
+}
 const AZUL = '#1a3a5c';
 const COLORS = ['#1a3a5c','#2196F3','#4CAF50','#FF9800','#E91E63',
                 '#9C27B0','#00BCD4','#FF5722','#607D8B','#795548'];
@@ -708,7 +764,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#f-cliente') && !e.target.closest('#cli-ac-box'))
     $('cli-ac-box').style.display='none';
 });
-$('f-dest').addEventListener('input', () => {
+$('f-dest').addEventListener('change', () => {
   if ($('results-section').style.display !== 'none') doCalc();
 });
 
@@ -800,11 +856,13 @@ function doCalc() {
   const agsActivas = AGENCIES.filter(a =>
     AG_NAMES.includes(a.nombre) && agVaADestino(a.nombre, destino));
 
-  // Aviso si el destino no es reconocido por ninguna agencia con datos
-  const hayFiltro = destino && AGENCIES.filter(a =>
-    AG_NAMES.includes(a.nombre) && (AG_DEST[a.nombre]||[]).length > 0
-  ).some(a => agVaADestino(a.nombre, destino));
-  $('dest-aviso') && ($('dest-aviso').style.display = (destino && !hayFiltro) ? '' : 'none');
+  // Aviso solo si hay datos de cobertura Y el destino no aparece en ninguna agencia
+  const agsConDatos = AGENCIES.filter(a =>
+    AG_NAMES.includes(a.nombre) && (AG_DEST[a.nombre]||[]).length > 0);
+  const hayFiltro = destino && agsConDatos.length > 0 &&
+    agsConDatos.some(a => agVaADestino(a.nombre, destino));
+  $('dest-aviso') && ($('dest-aviso').style.display =
+    (destino && agsConDatos.length > 0 && !hayFiltro) ? '' : 'none');
 
   const m1 = agsActivas.map(ag => {
     let bru=0, efect=0, cost=0; const mis=[];
@@ -893,7 +951,7 @@ async function loadOrders() {
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/pedidos?select=*&order=created_at.desc&limit=500`,
-      {headers: SB_HEADERS}
+      {headers: await getAuthHeaders()}
     );
     if (!r.ok) throw new Error();
     return await r.json();
@@ -912,10 +970,17 @@ async function saveOrder(record) {
     } catch(e) {}
     return;
   }
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/pedidos`, {
-    method: 'POST', headers: SB_HEADERS, body: JSON.stringify(record)
+  const lineasParaStock = (record.lineas || []).map(l => ({ cod: l.cod, qty: l.qty }));
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/save_order_and_decrement_stock`, {
+    method: 'POST',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ p_record: record, p_lineas: lineasParaStock })
   });
-  if (!r.ok) throw new Error('Error al guardar en Supabase');
+  if (!r.ok) {
+    const errBody = await r.json().catch(() => ({}));
+    const msg = errBody.message || errBody.hint || 'Error al guardar en Supabase';
+    throw new Error(msg);
+  }
 }
 
 async function deleteOrder(id) {
@@ -927,14 +992,14 @@ async function deleteOrder(id) {
     return;
   }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${id}`, {
-    method: 'DELETE', headers: SB_HEADERS
+    method: 'DELETE', headers: await getAuthHeaders()
   });
 }
 
 async function deleteAllOrders() {
   if (!SUPABASE_URL) { localStorage.removeItem(LS_KEY); return; }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=gt.0`, {
-    method: 'DELETE', headers: SB_HEADERS
+    method: 'DELETE', headers: await getAuthHeaders()
   });
 }
 
@@ -1312,7 +1377,8 @@ async function doLogin() {
     const data = await r.json();
     if (!r.ok) { err.textContent = data.error_description || data.msg || 'Usuario o contrasena incorrectos.'; err.style.display=''; return; }
     const role = data.user?.user_metadata?.role || 'tenant';
-    sessionStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.access_token, role, email }));
+    const expires_at = Date.now() + ((data.expires_in || 3600) * 1000);
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.access_token, refresh: data.refresh_token, role, email, expires_at }));
     applySession({ role, email });
     loadOrders().then(orders => { renderKPIs(orders); });
   } catch(e) {
@@ -1330,7 +1396,7 @@ function applySession(session) {
 }
 
 function doLogout() {
-  sessionStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(AUTH_KEY);
   location.reload();
 }
 
@@ -1352,25 +1418,40 @@ function doLogout() {
 })();
 
 function parsearMedidaLlanta(texto) {
-  const t = texto.replace(/\n/g,' ');
-  // Métrico: 205/55R16, 205/55 R16, LT215/85R16
-  let m = t.match(/(?:LT|P)?(\d{3})\/(\d{2,3})\s*[Rr]\s*(\d{2}(?:\.\d)?)/);
-  if (m) {
-    const width=parseInt(m[1]), profile=parseInt(m[2]), rim=parseFloat(m[3]);
-    return { spec: width+'/'+profile+' R'+rim, width, profile, rim,
-             raw: m[0].replace(/\s+/g,'') };
-  }
-  // Convencional: 7.50-16, 750-16
-  m = t.match(/(\d+)[.,](\d{2})\s*[-–]\s*(\d{2})/);
-  if (m) {
-    const rim=parseInt(m[3]);
-    return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
-  }
-  // Agrícola: 14.9 - 24
-  m = t.match(/(\d{2})[.,](\d)\s*[-–]\s*(\d{2})/);
-  if (m) {
-    const rim=parseInt(m[3]);
-    return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+  // Normalización base: aplanar saltos de línea y espacios múltiples
+  let t = texto.replace(/\n/g, ' ').replace(/\s+/g, ' ');
+
+  // Generar versiones alternativas para tolerar artefactos del OCR
+  const versiones = [
+    t,
+    // Sustituciones comunes de OCR: O→0, I/l→1
+    t.replace(/O/g,'0').replace(/\bI\b/g,'1').replace(/l(?=\d)/g,'1'),
+    // Remover espacios dentro de secuencias de dígitos (artefacto frecuente de Tesseract)
+    t.replace(/(\d)\s+(\d)/g,'$1$2'),
+    // Ambas correcciones juntas
+    t.replace(/O/g,'0').replace(/(\d)\s+(\d)/g,'$1$2'),
+  ];
+
+  for (const v of versiones) {
+    // Métrico: 205/55R16, 205/55 R16, LT215/85R16, 205|55R16, 205 / 55 R 16
+    let m = v.match(/(?:LT|P)?\s*(\d{3})\s*[\/\\|]\s*(\d{2,3})\s*[Rr]\s*(\d{2}(?:[.,]\d)?)/);
+    if (m) {
+      const width=parseInt(m[1]), profile=parseInt(m[2]), rim=parseFloat(m[3].replace(',','.'));
+      return { spec: width+'/'+profile+' R'+rim, width, profile, rim,
+               raw: m[0].replace(/\s+/g,'') };
+    }
+    // Convencional: 7.50-16
+    m = v.match(/(\d+)[.,](\d{2})\s*[-–]\s*(\d{2})/);
+    if (m) {
+      const rim=parseInt(m[3]);
+      return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+    }
+    // Agrícola: 14.9 - 24
+    m = v.match(/(\d{2})[.,](\d)\s*[-–]\s*(\d{2})/);
+    if (m) {
+      const rim=parseInt(m[3]);
+      return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+    }
   }
   return null;
 }
@@ -1456,20 +1537,18 @@ function buscarEnCatalogo(data) {
   if (data.profile) terminos.push('/'+data.profile);
   if (data.spec)    terminos.push(normStr(data.spec));
 
-  // Buscar por rodado obligatorio, + otros términos como refinamiento
+  const countMatches = p => {
+    const fields = normStr(p.c) + ' ' + normStr(p.d) + ' ' + normStr(p.r);
+    return terminos.filter(t => fields.includes(t)).length;
+  };
+
+  // Rodado obligatorio: buscar en descripción Y ramo; ordenar por coincidencias totales
   const resultados = CATALOG.filter(p => {
-    const d = normStr(p.d);
-    // debe incluir el rodado
-    const tieneRodado = data.rim && d.includes('r'+data.rim);
-    if (!tieneRodado) return false;
-    // bonus si también tiene ancho y perfil
-    return true;
-  }).sort((a, b) => {
-    // ordenar: más términos coincidentes primero
-    const sa = terminos.filter(t => normStr(a.d).includes(t)).length;
-    const sb = terminos.filter(t => normStr(b.d).includes(t)).length;
-    return sb - sa;
-  }).slice(0, 20);
+    if (!data.rim) return false;
+    const haystack = normStr(p.d) + ' ' + normStr(p.r);
+    return haystack.includes('r'+data.rim);
+  }).sort((a, b) => countMatches(b) - countMatches(a))
+    .slice(0, 20);
 
   const wrap = $('scan-productos');
   if (!resultados.length) {
@@ -1506,10 +1585,22 @@ function agregarDesdeScan(cod) {
 // ── Init ──────────────────────────────────────────────────────────────────
 $('f-fecha').value = today();
 filterCat();
-(function checkSession() {
-  const s = sessionStorage.getItem(AUTH_KEY);
-  if (s) { applySession(JSON.parse(s)); loadOrders().then(orders => { renderKPIs(orders); }); }
-  else { $('login-overlay').style.display = 'flex'; }
+(async function checkSession() {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (!raw) { $('login-overlay').style.display = 'flex'; return; }
+  let session = JSON.parse(raw);
+  if (session.expires_at && Date.now() > session.expires_at) {
+    if (session.refresh) {
+      session = await refreshSession(session.refresh);
+      if (!session) return;
+    } else {
+      localStorage.removeItem(AUTH_KEY);
+      $('login-overlay').style.display = 'flex';
+      return;
+    }
+  }
+  applySession(session);
+  loadOrders().then(orders => { renderKPIs(orders); });
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
