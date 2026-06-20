@@ -565,6 +565,12 @@ const SB_HEADERS = {
   'Content-Type': 'application/json',
   'Prefer': 'return=minimal'
 };
+// Returns headers with the logged-in user's JWT (required for RLS authenticated policies)
+function getAuthHeaders() {
+  const raw = sessionStorage.getItem(AUTH_KEY);
+  const token = raw ? (JSON.parse(raw).token || SUPABASE_KEY) : SUPABASE_KEY;
+  return { ...SB_HEADERS, 'Authorization': 'Bearer ' + token };
+}
 const AZUL = '#1a3a5c';
 const COLORS = ['#1a3a5c','#2196F3','#4CAF50','#FF9800','#E91E63',
                 '#9C27B0','#00BCD4','#FF5722','#607D8B','#795548'];
@@ -916,7 +922,7 @@ async function loadOrders() {
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/pedidos?select=*&order=created_at.desc&limit=500`,
-      {headers: SB_HEADERS}
+      {headers: getAuthHeaders()}
     );
     if (!r.ok) throw new Error();
     return await r.json();
@@ -938,7 +944,7 @@ async function saveOrder(record) {
   const lineasParaStock = (record.lineas || []).map(l => ({ cod: l.cod, qty: l.qty }));
   const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/save_order_and_decrement_stock`, {
     method: 'POST',
-    headers: SB_HEADERS,
+    headers: getAuthHeaders(),
     body: JSON.stringify({ p_record: record, p_lineas: lineasParaStock })
   });
   if (!r.ok) {
@@ -957,14 +963,14 @@ async function deleteOrder(id) {
     return;
   }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${id}`, {
-    method: 'DELETE', headers: SB_HEADERS
+    method: 'DELETE', headers: getAuthHeaders()
   });
 }
 
 async function deleteAllOrders() {
   if (!SUPABASE_URL) { localStorage.removeItem(LS_KEY); return; }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=gt.0`, {
-    method: 'DELETE', headers: SB_HEADERS
+    method: 'DELETE', headers: getAuthHeaders()
   });
 }
 
