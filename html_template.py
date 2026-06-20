@@ -1421,6 +1421,13 @@ function parsearMedidaLlanta(texto) {
   // Normalización base: aplanar saltos de línea y espacios múltiples
   let t = texto.replace(/\n/g, ' ').replace(/\s+/g, ' ');
 
+  // Helper: sustituir letras que el OCR confunde con dígitos
+  const fix = (s, map) => {
+    let r = s;
+    for (const [f, to] of Object.entries(map)) r = r.replace(new RegExp(f,'g'), to);
+    return r;
+  };
+
   // Generar versiones alternativas para tolerar artefactos del OCR
   const versiones = [
     t,
@@ -1430,6 +1437,14 @@ function parsearMedidaLlanta(texto) {
     t.replace(/(\d)\s+(\d)/g,'$1$2'),
     // Ambas correcciones juntas
     t.replace(/O/g,'0').replace(/(\d)\s+(\d)/g,'$1$2'),
+    // Sustitución agresiva v1: e→1, l→9, i→/, s→5 (e.g. "el5iels"→"195/95")
+    fix(t, { e:'1', E:'1', l:'9', '[iI]':'/', '[sS]':'5', '[oO]':'0' }),
+    // Sustitución agresiva v2: e→1, l→1, i→1 (variante conservadora)
+    fix(t, { e:'1', E:'1', l:'1', '[iI]':'1', '[sS]':'5', '[oO]':'0' }),
+    // v1 + colapsar espacios entre dígitos
+    fix(t, { e:'1', E:'1', l:'9', '[iI]':'/', '[sS]':'5', '[oO]':'0' }).replace(/(\d)\s+(\d)/g,'$1$2'),
+    // v2 + colapsar espacios
+    fix(t, { e:'1', E:'1', l:'1', '[iI]':'1', '[sS]':'5', '[oO]':'0' }).replace(/(\d)\s+(\d)/g,'$1$2'),
   ];
 
   for (const v of versiones) {
@@ -1472,49 +1487,59 @@ async function analizarLlanta() {
   $('scan-productos').style.display = 'none';
 
   try {
-    // Preprocesar imagen: escala de grises + normalización + umbralización binaria
-    // Esto convierte texto en relieve (goma oscura) en pixels blancos sobre negro,
-    // que Tesseract lee mucho mejor que gradientes sutiles.
-    const imageDataUrl = await new Promise((res, rej) => {
+    // Preprocesar imagen: dos versiones para máxima compatibilidad con fotos de llantas
+    // v1: raw (data URL directa) — deja que Tesseract use su propio algoritmo adaptativo
+    // v2: escala de grises normalizada — útil cuando Tesseract no adapta bien al contraste
+    const preprocesar = (imgSrc, binarizar) => new Promise((res, rej) => {
       const img = new Image();
       img.onload = () => {
         try {
-          const MAX_W = 1400;
-          const scale = img.width > MAX_W ? MAX_W / img.width : 1;
+          // Tesseract rinde mejor con imágenes grandes — upscalear si es pequeña
+          const MIN_W = 1200, MAX_W = 2000;
+          const scale = img.width < MIN_W ? MIN_W / img.width :
+                        img.width > MAX_W ? MAX_W / img.width : 1;
           const canvas = document.createElement('canvas');
           canvas.width  = Math.round(img.width  * scale);
           canvas.height = Math.round(img.height * scale);
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-          const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const d  = id.data;
-
-          // 1) Convertir a escala de grises y buscar min/max
-          const gray = new Uint8Array(canvas.width * canvas.height);
-          let mn = 255, mx = 0;
-          for (let i = 0; i < d.length; i += 4) {
-            const g = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
-            gray[i >> 2] = g;
-            if (g < mn) mn = g;
-            if (g > mx) mx = g;
+          if (binarizar) {
+            const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const d  = id.data;
+            const gray = new Uint8Array(canvas.width * canvas.height);
+            let mn = 255, mx = 0;
+            for (let i = 0; i < d.length; i += 4) {
+              const g = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
+              gray[i >> 2] = g; if (g < mn) mn = g; if (g > mx) mx = g;
+            }
+            const range = mx - mn || 1;
+            let darkCount = 0;
+            for (let j = 0; j < gray.length; j++) {
+              const bin = Math.round((gray[j] - mn) / range * 255) > 127 ? 255 : 0;
+              if (bin === 0) darkCount++;
+              const b = j*4; d[b]=d[b+1]=d[b+2]=bin; d[b+3]=255;
+            }
+            // Si >60% pixels son oscuros → fondo oscuro, texto claro → invertir
+            // Tesseract rinde mejor con texto oscuro sobre fondo claro
+            if (darkCount / gray.length > 0.6) {
+              for (let j = 0; j < gray.length; j++) {
+                const b = j*4; d[b]=d[b+1]=d[b+2]=255-d[b];
+              }
+            }
+            ctx.putImageData(id, 0, 0);
           }
-
-          // 2) Normalizar al rango completo [0,255] y umbralizar al 50%
-          const range = mx - mn || 1;
-          for (let j = 0; j < gray.length; j++) {
-            const norm = Math.round((gray[j] - mn) / range * 255);
-            const bin  = norm > 127 ? 255 : 0;
-            const base = j * 4;
-            d[base] = d[base+1] = d[base+2] = bin;
-            d[base+3] = 255;
-          }
-          ctx.putImageData(id, 0, 0);
           res(canvas.toDataURL('image/png'));
         } catch(err) { rej(err); }
       };
       img.onerror = rej;
-      img.src = URL.createObjectURL(file);
+      img.src = imgSrc;
+    });
+
+    const rawUrl = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = e => res(e.target.result);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
     });
 
     // Cargar Tesseract.js dinámicamente (solo cuando se necesita)
@@ -1528,18 +1553,47 @@ async function analizarLlanta() {
       });
     }
 
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando OCR...';
-
-    const result = await Tesseract.recognize(imageDataUrl, 'eng', {
-      logger: m => {
+    const ocr = async (dataUrl, intento) => {
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>OCR '+intento+'...';
+      const logFn = m => {
         if (m.status === 'recognizing text')
           btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>'+
-            Math.round(m.progress*100)+'%...';
+            intento+' '+Math.round(m.progress*100)+'%...';
+      };
+      // Intentar con worker + whitelist: fuerza a Tesseract a emitir solo dígitos y
+      // caracteres propios de medidas de llanta, evitando letras en lugar de números.
+      try {
+        const worker = await Tesseract.createWorker('eng', 1, { logger: logFn });
+        await worker.setParameters({
+          tessedit_char_whitelist: '0123456789/. -RrLT',
+          tessedit_pageseg_mode: '7',
+        });
+        const result = await worker.recognize(dataUrl);
+        await worker.terminate();
+        return result;
+      } catch(_) {
+        // Fallback a API simple si el worker no está disponible
+        return Tesseract.recognize(dataUrl, 'eng', { logger: logFn });
       }
-    });
+    };
 
-    const texto = result.data.text;
-    const data  = parsearMedidaLlanta(texto);
+    // Intento 1: imagen raw (o upscaleada) — Tesseract usa su algoritmo adaptativo
+    let r1 = await ocr(rawUrl, '1/2');
+    let texto = r1.data.text;
+    let data  = parsearMedidaLlanta(texto);
+
+    // Intento 2: binarizada — si el intento 1 no encontró medida o devolvió poco texto
+    if (!data || texto.replace(/\s/g,'').length < 6) {
+      const binUrl = await preprocesar(rawUrl, true);
+      const r2 = await ocr(binUrl, '2/2');
+      const data2 = parsearMedidaLlanta(r2.data.text);
+      if (data2) {
+        data  = data2;
+        texto = r2.data.text;
+      } else if (r2.data.text.replace(/\s/g,'').length > texto.replace(/\s/g,'').length) {
+        texto = r2.data.text;
+      }
+    }
 
     const resultEl = $('scan-result');
     resultEl.style.display = '';
