@@ -1418,25 +1418,40 @@ function doLogout() {
 })();
 
 function parsearMedidaLlanta(texto) {
-  const t = texto.replace(/\n/g,' ');
-  // Métrico: 205/55R16, 205/55 R16, LT215/85R16
-  let m = t.match(/(?:LT|P)?(\d{3})\/(\d{2,3})\s*[Rr]\s*(\d{2}(?:\.\d)?)/);
-  if (m) {
-    const width=parseInt(m[1]), profile=parseInt(m[2]), rim=parseFloat(m[3]);
-    return { spec: width+'/'+profile+' R'+rim, width, profile, rim,
-             raw: m[0].replace(/\s+/g,'') };
-  }
-  // Convencional: 7.50-16, 750-16
-  m = t.match(/(\d+)[.,](\d{2})\s*[-–]\s*(\d{2})/);
-  if (m) {
-    const rim=parseInt(m[3]);
-    return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
-  }
-  // Agrícola: 14.9 - 24
-  m = t.match(/(\d{2})[.,](\d)\s*[-–]\s*(\d{2})/);
-  if (m) {
-    const rim=parseInt(m[3]);
-    return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+  // Normalización base: aplanar saltos de línea y espacios múltiples
+  let t = texto.replace(/\n/g, ' ').replace(/\s+/g, ' ');
+
+  // Generar versiones alternativas para tolerar artefactos del OCR
+  const versiones = [
+    t,
+    // Sustituciones comunes de OCR: O→0, I/l→1
+    t.replace(/O/g,'0').replace(/\bI\b/g,'1').replace(/l(?=\d)/g,'1'),
+    // Remover espacios dentro de secuencias de dígitos (artefacto frecuente de Tesseract)
+    t.replace(/(\d)\s+(\d)/g,'$1$2'),
+    // Ambas correcciones juntas
+    t.replace(/O/g,'0').replace(/(\d)\s+(\d)/g,'$1$2'),
+  ];
+
+  for (const v of versiones) {
+    // Métrico: 205/55R16, 205/55 R16, LT215/85R16, 205|55R16, 205 / 55 R 16
+    let m = v.match(/(?:LT|P)?\s*(\d{3})\s*[\/\\|]\s*(\d{2,3})\s*[Rr]\s*(\d{2}(?:[.,]\d)?)/);
+    if (m) {
+      const width=parseInt(m[1]), profile=parseInt(m[2]), rim=parseFloat(m[3].replace(',','.'));
+      return { spec: width+'/'+profile+' R'+rim, width, profile, rim,
+               raw: m[0].replace(/\s+/g,'') };
+    }
+    // Convencional: 7.50-16
+    m = v.match(/(\d+)[.,](\d{2})\s*[-–]\s*(\d{2})/);
+    if (m) {
+      const rim=parseInt(m[3]);
+      return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+    }
+    // Agrícola: 14.9 - 24
+    m = v.match(/(\d{2})[.,](\d)\s*[-–]\s*(\d{2})/);
+    if (m) {
+      const rim=parseInt(m[3]);
+      return { spec: m[1]+'.'+m[2]+'-'+rim, rim, raw: m[0] };
+    }
   }
   return null;
 }
@@ -1522,20 +1537,18 @@ function buscarEnCatalogo(data) {
   if (data.profile) terminos.push('/'+data.profile);
   if (data.spec)    terminos.push(normStr(data.spec));
 
-  // Buscar por rodado obligatorio, + otros términos como refinamiento
+  const countMatches = p => {
+    const fields = normStr(p.c) + ' ' + normStr(p.d) + ' ' + normStr(p.r);
+    return terminos.filter(t => fields.includes(t)).length;
+  };
+
+  // Rodado obligatorio: buscar en descripción Y ramo; ordenar por coincidencias totales
   const resultados = CATALOG.filter(p => {
-    const d = normStr(p.d);
-    // debe incluir el rodado
-    const tieneRodado = data.rim && d.includes('r'+data.rim);
-    if (!tieneRodado) return false;
-    // bonus si también tiene ancho y perfil
-    return true;
-  }).sort((a, b) => {
-    // ordenar: más términos coincidentes primero
-    const sa = terminos.filter(t => normStr(a.d).includes(t)).length;
-    const sb = terminos.filter(t => normStr(b.d).includes(t)).length;
-    return sb - sa;
-  }).slice(0, 20);
+    if (!data.rim) return false;
+    const haystack = normStr(p.d) + ' ' + normStr(p.r);
+    return haystack.includes('r'+data.rim);
+  }).sort((a, b) => countMatches(b) - countMatches(a))
+    .slice(0, 20);
 
   const wrap = $('scan-productos');
   if (!resultados.length) {
