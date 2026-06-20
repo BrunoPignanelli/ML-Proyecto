@@ -179,7 +179,28 @@ body{background:#f4f6f9;font-size:.91rem;}
               </div>
               <div class="col-12 col-sm-6 col-md-3">
                 <label class="form-label mb-1 fw-semibold small">Localidad / Destino</label>
-                <input id="f-dest" class="form-control form-control-sm" placeholder="Ciudad de destino" autocomplete="off">
+                <select id="f-dest" class="form-select form-select-sm">
+                  <option value="">— Departamento —</option>
+                  <option>Artigas</option>
+                  <option>Canelones</option>
+                  <option>Cerro Largo</option>
+                  <option>Colonia</option>
+                  <option>Durazno</option>
+                  <option>Flores</option>
+                  <option>Florida</option>
+                  <option>Lavalleja</option>
+                  <option>Maldonado</option>
+                  <option>Montevideo</option>
+                  <option>Paysandú</option>
+                  <option>Río Negro</option>
+                  <option>Rivera</option>
+                  <option>Rocha</option>
+                  <option>Salto</option>
+                  <option>San José</option>
+                  <option>Soriano</option>
+                  <option>Tacuarembó</option>
+                  <option>Treinta y Tres</option>
+                </select>
                 <div id="dest-aviso" class="small text-warning mt-1" style="display:none"><i class="bi bi-exclamation-triangle me-1"></i>Destino no encontrado en coberturas — mostrando todas las agencias</div>
               </div>
               <div class="col-6 col-sm-3 col-md-2">
@@ -703,7 +724,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#f-cliente') && !e.target.closest('#cli-ac-box'))
     $('cli-ac-box').style.display='none';
 });
-$('f-dest').addEventListener('input', () => {
+$('f-dest').addEventListener('change', () => {
   if ($('results-section').style.display !== 'none') doCalc();
 });
 
@@ -795,11 +816,13 @@ function doCalc() {
   const agsActivas = AGENCIES.filter(a =>
     AG_NAMES.includes(a.nombre) && agVaADestino(a.nombre, destino));
 
-  // Aviso si el destino no es reconocido por ninguna agencia con datos
-  const hayFiltro = destino && AGENCIES.filter(a =>
-    AG_NAMES.includes(a.nombre) && (AG_DEST[a.nombre]||[]).length > 0
-  ).some(a => agVaADestino(a.nombre, destino));
-  $('dest-aviso') && ($('dest-aviso').style.display = (destino && !hayFiltro) ? '' : 'none');
+  // Aviso solo si hay datos de cobertura Y el destino no aparece en ninguna agencia
+  const agsConDatos = AGENCIES.filter(a =>
+    AG_NAMES.includes(a.nombre) && (AG_DEST[a.nombre]||[]).length > 0);
+  const hayFiltro = destino && agsConDatos.length > 0 &&
+    agsConDatos.some(a => agVaADestino(a.nombre, destino));
+  $('dest-aviso') && ($('dest-aviso').style.display =
+    (destino && agsConDatos.length > 0 && !hayFiltro) ? '' : 'none');
 
   const m1 = agsActivas.map(ag => {
     let bru=0, efect=0, cost=0; const mis=[];
@@ -907,10 +930,17 @@ async function saveOrder(record) {
     } catch(e) {}
     return;
   }
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/pedidos`, {
-    method: 'POST', headers: SB_HEADERS, body: JSON.stringify(record)
+  const lineasParaStock = (record.lineas || []).map(l => ({ cod: l.cod, qty: l.qty }));
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/save_order_and_decrement_stock`, {
+    method: 'POST',
+    headers: SB_HEADERS,
+    body: JSON.stringify({ p_record: record, p_lineas: lineasParaStock })
   });
-  if (!r.ok) throw new Error('Error al guardar en Supabase');
+  if (!r.ok) {
+    const errBody = await r.json().catch(() => ({}));
+    const msg = errBody.message || errBody.hint || 'Error al guardar en Supabase';
+    throw new Error(msg);
+  }
 }
 
 async function deleteOrder(id) {
