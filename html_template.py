@@ -890,11 +890,10 @@ $('margin-sl').addEventListener('input', () => {
 
 // ── Render Modo 1 ─────────────────────────────────────────────────────────
 function renderM1(rows) {
-  const medals=['&#127945;','&#127946;','&#127947;'];
   $('m1-body').innerHTML = rows.map((r,i) => {
     const cls=i<3?'rank-'+(i+1):'';
     return '<tr class="'+cls+'">'+
-      '<td>'+(medals[i]||i+1+'.')+'</td>'+
+      '<td>'+(i+1)+'.</td>'+
       '<td class="fw-semibold">'+esc(r.ag.nombre)+'</td>'+
       '<td class="text-end text-muted d-none d-sm-table-cell">'+fmt(r.bru)+'</td>'+
       '<td class="text-end text-muted d-none d-sm-table-cell">'+fmt(r.efect)+'</td>'+
@@ -1338,7 +1337,7 @@ function showDetail(cod) {
     '<th>#</th><th>Agencia</th><th class="text-end">Bruto</th><th class="text-end">Efectivo</th><th class="text-end">Costo real</th>'+
     '<th>Canje</th><th>Frec.</th></tr></thead><tbody>'+
     rows.map((r,i)=>'<tr class="'+(i<3?'rank-'+(i+1):'')+'">'+
-      '<td>'+(['&#127945;','&#127946;','&#127947;'][i]||i+1+'.')+'</td>'+
+      '<td>'+(i+1)+'.</td>'+
       '<td class="fw-semibold">'+esc(r.ag.nombre)+'</td>'+
       '<td class="text-end text-muted">'+fmt(r.b)+'</td>'+
       '<td class="text-end text-muted">'+fmt(r.e)+'</td>'+
