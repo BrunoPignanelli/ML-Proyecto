@@ -1433,8 +1433,8 @@ function parsearMedidaLlanta(texto) {
   ];
 
   for (const v of versiones) {
-    // Métrico: 205/55R16, 205/55 R16, LT215/85R16, 205|55R16, 205 / 55 R 16
-    let m = v.match(/(?:LT|P)?\s*(\d{3})\s*[\/\\|]\s*(\d{2,3})\s*[Rr]\s*(\d{2}(?:[.,]\d)?)/);
+    // Métrico: 205/55R16, 205/55 R16, LT215/85R16, 205|55R16, 20555R16 (sin separador por OCR)
+    let m = v.match(/(?:LT|P)?\s*(\d{3})\s*[\/\\|]?\s*(\d{2,3})\s*[Rr]\s*(\d{2}(?:[.,]\d)?)/);
     if (m) {
       const width=parseInt(m[1]), profile=parseInt(m[2]), rim=parseFloat(m[3].replace(',','.'));
       return { spec: width+'/'+profile+' R'+rim, width, profile, rim,
@@ -1459,16 +1459,67 @@ function parsearMedidaLlanta(texto) {
 async function analizarLlanta() {
   const btn = $('scan-btn');
   const file = $('scan-input').files[0];
-  if (!file) return;
+  if (!file) {
+    const resultEl = $('scan-result');
+    resultEl.style.display = '';
+    resultEl.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Primero seleccioná una imagen usando el botón "Tomar / subir foto".</div>';
+    return;
+  }
 
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Leyendo...';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Leyendo imagen...';
   $('scan-result').style.display = 'none';
   $('scan-productos').style.display = 'none';
 
   try {
+    // Preprocesar imagen: escala de grises + normalización + umbralización binaria
+    // Esto convierte texto en relieve (goma oscura) en pixels blancos sobre negro,
+    // que Tesseract lee mucho mejor que gradientes sutiles.
+    const imageDataUrl = await new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const MAX_W = 1400;
+          const scale = img.width > MAX_W ? MAX_W / img.width : 1;
+          const canvas = document.createElement('canvas');
+          canvas.width  = Math.round(img.width  * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const d  = id.data;
+
+          // 1) Convertir a escala de grises y buscar min/max
+          const gray = new Uint8Array(canvas.width * canvas.height);
+          let mn = 255, mx = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            const g = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
+            gray[i >> 2] = g;
+            if (g < mn) mn = g;
+            if (g > mx) mx = g;
+          }
+
+          // 2) Normalizar al rango completo [0,255] y umbralizar al 50%
+          const range = mx - mn || 1;
+          for (let j = 0; j < gray.length; j++) {
+            const norm = Math.round((gray[j] - mn) / range * 255);
+            const bin  = norm > 127 ? 255 : 0;
+            const base = j * 4;
+            d[base] = d[base+1] = d[base+2] = bin;
+            d[base+3] = 255;
+          }
+          ctx.putImageData(id, 0, 0);
+          res(canvas.toDataURL('image/png'));
+        } catch(err) { rej(err); }
+      };
+      img.onerror = rej;
+      img.src = URL.createObjectURL(file);
+    });
+
     // Cargar Tesseract.js dinámicamente (solo cuando se necesita)
     if (!window.Tesseract) {
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Cargando OCR...';
       await new Promise((res, rej) => {
         const s = document.createElement('script');
         s.src = 'https://unpkg.com/tesseract.js@v4/dist/tesseract.min.js';
@@ -1479,7 +1530,7 @@ async function analizarLlanta() {
 
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando OCR...';
 
-    const result = await Tesseract.recognize(file, 'eng', {
+    const result = await Tesseract.recognize(imageDataUrl, 'eng', {
       logger: m => {
         if (m.status === 'recognizing text')
           btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>'+
@@ -1497,8 +1548,8 @@ async function analizarLlanta() {
       resultEl.innerHTML =
         '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>'+
         'No se encontró un código de medida. Intentá con una foto más nítida y de cerca del lateral de la llanta.'+
-        '<details class="mt-2"><summary class="small">Texto detectado</summary>'+
-        '<pre class="small mt-1" style="white-space:pre-wrap;max-height:120px;overflow-y:auto">'+esc(texto)+'</pre></details></div>';
+        '<details class="mt-2" open><summary class="small fw-bold">Texto detectado por OCR</summary>'+
+        '<pre class="small mt-1 p-2 bg-light border rounded" style="white-space:pre-wrap;max-height:150px;overflow-y:auto">'+(esc(texto)||'<em class="text-muted">(sin texto)</em>')+'</pre></details></div>';
       return;
     }
 
@@ -1519,9 +1570,10 @@ async function analizarLlanta() {
   } catch(e) {
     const resultEl = $('scan-result');
     resultEl.style.display = '';
+    const msg = e instanceof Error ? e.message : (e ? String(e) : 'error desconocido');
     resultEl.innerHTML =
       '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>'+
-      'Error al procesar la imagen: '+esc(e.message)+'</div>';
+      'Error al procesar la imagen: '+esc(msg)+'</div>';
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-cpu me-1"></i>Analizar';
@@ -1531,22 +1583,26 @@ async function analizarLlanta() {
 function buscarEnCatalogo(data) {
   if (!data.rim && !data.spec) { $('scan-productos').style.display='none'; return; }
 
-  const terminos = [];
-  if (data.rim)     terminos.push('r'+data.rim);
-  if (data.width)   terminos.push(String(data.width));
-  if (data.profile) terminos.push('/'+data.profile);
-  if (data.spec)    terminos.push(normStr(data.spec));
+  // Regex de rodado: matchea "R15", "R 15", "KR15" pero NO "TR15" (tipo válvula)
+  // (?<!t) evita TR15; r\s* permite espacio entre R y número
+  const rimRx = data.rim
+    ? new RegExp('(?<!t)r\\s*' + data.rim + '(?!\\d)', 'i')
+    : null;
 
   const countMatches = p => {
     const fields = normStr(p.c) + ' ' + normStr(p.d) + ' ' + normStr(p.r);
-    return terminos.filter(t => fields.includes(t)).length;
+    let score = 0;
+    if (rimRx && rimRx.test(fields)) score++;
+    if (data.width   && fields.includes(String(data.width)))   score++;
+    if (data.profile && fields.includes('/'+data.profile))     score++;
+    return score;
   };
 
-  // Rodado obligatorio: buscar en descripción Y ramo; ordenar por coincidencias totales
+  // Filtro: rodado obligatorio
   const resultados = CATALOG.filter(p => {
-    if (!data.rim) return false;
+    if (!rimRx) return false;
     const haystack = normStr(p.d) + ' ' + normStr(p.r);
-    return haystack.includes('r'+data.rim);
+    return rimRx.test(haystack);
   }).sort((a, b) => countMatches(b) - countMatches(a))
     .slice(0, 20);
 
