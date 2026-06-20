@@ -18,11 +18,11 @@ def norm(s):
 
 def extract_rim(desc):
     d = str(desc).upper()
-    m = re.search(r'\d\s+-\s+(\d{2,3})\b', d)
-    if m: return float(m.group(1))
-    m = re.search(r'-(\d{2,3})\b', d)
+    m = re.search(r'\d\s+-\s+(\d{2,3}(?:\.\d)?)\b', d)
     if m: return float(m.group(1))
     m = re.search(r'R\s*(\d{2}(?:\.\d)?)\b', d)
+    if m: return float(m.group(1))
+    m = re.search(r'(?<=[\d/\s])-(\d{2,3}(?:\.\d)?)\b', d)
     if m: return float(m.group(1))
     return None
 
@@ -80,7 +80,11 @@ def classify(familia, desc):
         return 'cub_agro_tras_med'
     if 'PASEO' in f:
         rim = extract_rim(desc)
-        return 'cub_auto_r12_r14' if rim and rim <= 14 else 'cub_auto_r15_r19'
+        if rim:
+            if rim <= 14: return 'cub_auto_r12_r14'
+            if rim <= 19: return 'cub_auto_r15_r19'
+            return 'cub_camion_r20_r22'
+        return 'cub_auto_r15_r19'
     if 'CAMIONETA' in f or 'PICK UP' in f:
         rim = extract_rim(desc)
         if rim:
