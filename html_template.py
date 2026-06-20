@@ -565,11 +565,40 @@ const SB_HEADERS = {
   'Content-Type': 'application/json',
   'Prefer': 'return=minimal'
 };
-// Returns headers with the logged-in user's JWT (required for RLS authenticated policies)
-function getAuthHeaders() {
-  const raw = sessionStorage.getItem(AUTH_KEY);
-  const token = raw ? (JSON.parse(raw).token || SUPABASE_KEY) : SUPABASE_KEY;
-  return { ...SB_HEADERS, 'Authorization': 'Bearer ' + token };
+// Returns headers with the logged-in user's JWT, refreshing silently if near expiry
+async function getAuthHeaders() {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (!raw) return SB_HEADERS;
+  let session = JSON.parse(raw);
+  if (session.refresh && session.expires_at && Date.now() > session.expires_at - 300000) {
+    session = await refreshSession(session.refresh) || session;
+  }
+  return { ...SB_HEADERS, 'Authorization': 'Bearer ' + (session.token || SUPABASE_KEY) };
+}
+async function refreshSession(refreshToken) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    const role = data.user?.user_metadata?.role || 'tenant';
+    const session = {
+      token: data.access_token,
+      refresh: data.refresh_token,
+      role,
+      email: data.user?.email || '',
+      expires_at: Date.now() + ((data.expires_in || 3600) * 1000)
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+    return session;
+  } catch(e) {
+    localStorage.removeItem(AUTH_KEY);
+    $('login-overlay').style.display = 'flex';
+    return null;
+  }
 }
 const AZUL = '#1a3a5c';
 const COLORS = ['#1a3a5c','#2196F3','#4CAF50','#FF9800','#E91E63',
@@ -922,7 +951,7 @@ async function loadOrders() {
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/pedidos?select=*&order=created_at.desc&limit=500`,
-      {headers: getAuthHeaders()}
+      {headers: await getAuthHeaders()}
     );
     if (!r.ok) throw new Error();
     return await r.json();
@@ -944,7 +973,7 @@ async function saveOrder(record) {
   const lineasParaStock = (record.lineas || []).map(l => ({ cod: l.cod, qty: l.qty }));
   const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/save_order_and_decrement_stock`, {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
     body: JSON.stringify({ p_record: record, p_lineas: lineasParaStock })
   });
   if (!r.ok) {
@@ -963,14 +992,14 @@ async function deleteOrder(id) {
     return;
   }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${id}`, {
-    method: 'DELETE', headers: getAuthHeaders()
+    method: 'DELETE', headers: await getAuthHeaders()
   });
 }
 
 async function deleteAllOrders() {
   if (!SUPABASE_URL) { localStorage.removeItem(LS_KEY); return; }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=gt.0`, {
-    method: 'DELETE', headers: getAuthHeaders()
+    method: 'DELETE', headers: await getAuthHeaders()
   });
 }
 
@@ -1348,7 +1377,8 @@ async function doLogin() {
     const data = await r.json();
     if (!r.ok) { err.textContent = data.error_description || data.msg || 'Usuario o contrasena incorrectos.'; err.style.display=''; return; }
     const role = data.user?.user_metadata?.role || 'tenant';
-    sessionStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.access_token, role, email }));
+    const expires_at = Date.now() + ((data.expires_in || 3600) * 1000);
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.access_token, refresh: data.refresh_token, role, email, expires_at }));
     applySession({ role, email });
     loadOrders().then(orders => { renderKPIs(orders); });
   } catch(e) {
@@ -1366,7 +1396,7 @@ function applySession(session) {
 }
 
 function doLogout() {
-  sessionStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(AUTH_KEY);
   location.reload();
 }
 
@@ -1542,10 +1572,22 @@ function agregarDesdeScan(cod) {
 // ── Init ──────────────────────────────────────────────────────────────────
 $('f-fecha').value = today();
 filterCat();
-(function checkSession() {
-  const s = sessionStorage.getItem(AUTH_KEY);
-  if (s) { applySession(JSON.parse(s)); loadOrders().then(orders => { renderKPIs(orders); }); }
-  else { $('login-overlay').style.display = 'flex'; }
+(async function checkSession() {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (!raw) { $('login-overlay').style.display = 'flex'; return; }
+  let session = JSON.parse(raw);
+  if (session.expires_at && Date.now() > session.expires_at) {
+    if (session.refresh) {
+      session = await refreshSession(session.refresh);
+      if (!session) return;
+    } else {
+      localStorage.removeItem(AUTH_KEY);
+      $('login-overlay').style.display = 'flex';
+      return;
+    }
+  }
+  applySession(session);
+  loadOrders().then(orders => { renderKPIs(orders); });
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
