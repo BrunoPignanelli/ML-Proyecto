@@ -35,27 +35,30 @@ def extract_amp(desc):
     return int(m.group(1)) if m else None
 
 UNIFIED_CATS = {
-    'cub_moto':          'Cubierta Moto',
-    'cub_auto_r12_r14':  'Cubierta Auto R12-R14',
-    'cub_auto_r15_r19':  'Cubierta Auto/Camioneta R15-R19',
-    'cub_camion_r20_r22':'Cubierta Camion R20-R22.5',
-    'cub_agro_del':      'Cubierta Agricola Delantera',
-    'cub_agro_tras_med': 'Cubierta Agricola Trasera Med. 24-26"',
-    'cub_agro_tras_gde': 'Cubierta Agricola Trasera Gde. 28-36"',
-    'cub_agro_tras_xgde':'Cubierta Agricola/Vial +38"',
-    'camara':            'Camara',
-    'bateria_chica':     'Bateria Chica (<=110 Ah)',
-    'bateria_grande':    'Bateria Grande (>110 Ah)',
-    'lubricante_caja':   'Lubricante en caja/lata',
-    'lubricante_tambor': 'Lubricante Tambor 205L',
-    'bulto_general':     'Bulto General',
+    'cub_moto':              'Cubierta Moto',
+    'cub_auto_r13_r14':      'Cubierta Auto R13-R14',
+    'cub_auto_r15_r18':      'Cubierta Auto R15-R18',
+    'cub_camioneta_r16_r19': 'Cubierta Camioneta R16-R19',
+    'cub_auto_r19_r22':      'Cubierta Auto/Camioneta R19-R22',
+    'cub_camion_chico':      'Cubierta Camion Chico/Mediano',
+    'cub_camion_grande':     'Cubierta Camion Grande/Semirremolque',
+    'cub_agro_del':          'Cubierta Agricola Delantera',
+    'cub_agro_tras_med':     'Cubierta Agricola Trasera Med. 24-26"',
+    'cub_agro_tras_gde':     'Cubierta Agricola Trasera Gde. 28-34"',
+    'cub_agro_tras_xgde':    'Cubierta Agricola Extra Grande +34"',
+    'cub_vial':              'Neumatico Vial / OTR',
+    'camara':                'Camara',
+    'bateria_chica':         'Bateria Chica (<=110 Ah)',
+    'bateria_grande':        'Bateria Grande (>110 Ah)',
+    'lubricante':            'Lubricante (caja/lata/tambor)',
+    'bulto_general':         'Bulto General',
 }
 
 def classify(familia, desc):
     f = str(familia).upper()
     d = str(desc).upper()
     if 'LUBRICANTE' in f:
-        return 'lubricante_tambor' if ('TAMBOR' in d or '205' in d) else 'lubricante_caja'
+        return 'lubricante'
     if 'BATERIA' in f:
         amp = extract_amp(desc)
         return 'bateria_grande' if amp and amp > 110 else 'bateria_chica'
@@ -64,38 +67,34 @@ def classify(familia, desc):
     if 'MOTO' in f and 'CAM' not in f:
         return 'cub_moto'
     if 'GIGANTE' in f:
-        return 'cub_camion_r20_r22'
+        rim = extract_rim(desc)
+        return 'cub_camion_grande' if rim and rim >= 22.5 else 'cub_camion_chico'
     if 'VIAL' in f or 'IND.' in f:
-        rim = extract_rim(desc)
-        return 'cub_agro_tras_xgde' if rim and rim >= 38 else 'cub_agro_tras_gde'
+        return 'cub_vial'
     if 'AGR DEL' in f or 'AGRICOLA DEL' in f:
-        rim = extract_rim(desc)
-        if rim:
-            if rim >= 38: return 'cub_agro_tras_xgde'
-            if rim >= 28: return 'cub_agro_tras_gde'
-            if rim >= 24: return 'cub_agro_tras_med'
         return 'cub_agro_del'
     if 'AGR TRAS' in f or 'AGRICOLA TRAS' in f:
         rim = extract_rim(desc)
         if rim:
-            if rim >= 38: return 'cub_agro_tras_xgde'
-            if rim >= 30: return 'cub_agro_tras_gde'
+            if rim >= 34: return 'cub_agro_tras_xgde'
+            if rim >= 28: return 'cub_agro_tras_gde'
             if rim >= 24: return 'cub_agro_tras_med'
         return 'cub_agro_tras_med'
     if 'PASEO' in f:
         rim = extract_rim(desc)
         if rim:
-            if rim <= 14: return 'cub_auto_r12_r14'
-            if rim <= 19: return 'cub_auto_r15_r19'
-            return 'cub_camion_r20_r22'
-        return 'cub_auto_r15_r19'
+            if rim <= 14: return 'cub_auto_r13_r14'
+            if rim <= 18: return 'cub_auto_r15_r18'
+            return 'cub_auto_r19_r22'
+        return 'cub_auto_r15_r18'
     if 'CAMIONETA' in f or 'PICK UP' in f:
         rim = extract_rim(desc)
         if rim:
-            if rim <= 14: return 'cub_auto_r12_r14'
-            if rim <= 19: return 'cub_auto_r15_r19'
-            return 'cub_camion_r20_r22'
-        return 'cub_auto_r15_r19'
+            if rim <= 14: return 'cub_auto_r13_r14'
+            if rim <= 15: return 'cub_auto_r15_r18'
+            if rim <= 19: return 'cub_camioneta_r16_r19'
+            return 'cub_auto_r19_r22'
+        return 'cub_camioneta_r16_r19'
     return 'bulto_general'
 
 # ═══════════════════════════════════════════════════════
@@ -104,117 +103,192 @@ def classify(familia, desc):
 
 MAPPING = {
     'DAC': {
-        'cub_moto':'Atado moto','cub_auto_r12_r14':'Rodado 12,13,14',
-        'cub_auto_r15_r19':'Rodado 15 a 18','cub_camion_r20_r22':'Rodado 20 a 22,5',
-        'cub_agro_del':'Cubierta tractor AGRO 24 a 42','cub_agro_tras_med':'Cubierta tractor AGRO 24 a 42',
-        'cub_agro_tras_gde':'Cubierta tractor AGRO 24 a 42','cub_agro_tras_xgde':'Cubierta tractor AGRO 24 a 42',
+        'cub_moto':'Atado moto',
+        'cub_auto_r13_r14':'Rodado 12,13,14',
+        'cub_auto_r15_r18':'Rodado 15 a 18','cub_camioneta_r16_r19':'Rodado 15 a 18',
+        'cub_auto_r19_r22':'Rodado 20 a 22,5',
+        'cub_camion_chico':'Rodado 20 a 22,5','cub_camion_grande':'Rodado 20 a 22,5',
+        'cub_agro_del':'Cubierta tractor AGRO 24 a 42',
+        'cub_agro_tras_med':'Cubierta tractor AGRO 24 a 42',
+        'cub_agro_tras_gde':'Cubierta tractor AGRO 24 a 42',
+        'cub_agro_tras_xgde':'Cubierta tractor AGRO 24 a 42',
+        'cub_vial':'Cubierta tractor AGRO 24 a 42',
         'camara':'Bulto hasta 15kg','bateria_chica':'Bateria chica','bateria_grande':'Bateria grande',
-        'lubricante_caja':'Bulto hasta 15kg','lubricante_tambor':'Tambor 205lts','bulto_general':'Bulto hasta 15kg',
+        'lubricante':'Bulto hasta 15kg','bulto_general':'Bulto hasta 15kg',
     },
     'NASAZZI': {
-        'cub_moto':'Rodado 15 a 19','cub_auto_r12_r14':'Rodado 13 y 14',
-        'cub_auto_r15_r19':'Rodado 15 a 19','cub_camion_r20_r22':'Rodado 20 a 22,5',
+        'cub_moto':'Rodado 15 a 19',
+        'cub_auto_r13_r14':'Rodado 13 y 14',
+        'cub_auto_r15_r18':'Rodado 15 a 19','cub_camioneta_r16_r19':'Rodado 15 a 19',
+        'cub_auto_r19_r22':'Rodado 20 a 22,5',
+        'cub_camion_chico':'Rodado 20 a 22,5','cub_camion_grande':'Rodado 20 a 22,5',
         'cub_agro_del':'Rodado 24 y 25','cub_agro_tras_med':'Rodado 24 y 25',
-        'cub_agro_tras_gde':'Rodado 26 a 32','cub_agro_tras_xgde':'Cub viales de 38 a 46 extra grande',
+        'cub_agro_tras_gde':'Rodado 26 a 32',
+        'cub_agro_tras_xgde':'Cub viales de 38 a 46 extra grande',
+        'cub_vial':'Rodado 26 a 32',
         'camara':'Bultos','bateria_chica':'Bat hasta 110 amp','bateria_grande':'Bat mayor 110 amp',
-        'lubricante_caja':'Bultos lubricantes','lubricante_tambor':'Tambor 205lts','bulto_general':'Bultos',
+        'lubricante':'Bultos lubricantes','bulto_general':'Bultos',
     },
     'MEGAM': {
-        'cub_moto':'Bat y bultos','cub_auto_r12_r14':'Cub 13 y 14',
-        'cub_auto_r15_r19':'Cubierta auto (15 a 17)','cub_camion_r20_r22':'Cubierta camion',
+        'cub_moto':'Bat y bultos',
+        'cub_auto_r13_r14':'Cub 13 y 14',
+        'cub_auto_r15_r18':'Cubierta auto (15 a 17)','cub_camioneta_r16_r19':'Cubierta auto (15 a 17)',
+        'cub_auto_r19_r22':'Cubierta camion',
+        'cub_camion_chico':'Cubierta camion','cub_camion_grande':'Cubierta camion',
         'cub_agro_del':'Tractor chico','cub_agro_tras_med':'Tractor chico',
         'cub_agro_tras_gde':'Tractor grande','cub_agro_tras_xgde':'Tractor grande',
+        'cub_vial':'Tractor grande',
         'camara':'Bat y bultos','bateria_chica':'Bat y bultos','bateria_grande':'Bat y bultos',
-        'lubricante_caja':'Bat y bultos','lubricante_tambor':'Tambor 205lts','bulto_general':'Bat y bultos',
+        'lubricante':'Bat y bultos','bulto_general':'Bat y bultos',
     },
     'Transportes Nagar sas (Expreso Ruta 1)': {
-        'cub_moto':'Auto','cub_auto_r12_r14':'Auto','cub_auto_r15_r19':'Camioneta',
-        'cub_camion_r20_r22':'Camion','cub_agro_del':'Tractor del y 17,5',
-        'cub_agro_tras_med':'Tractor traseras','cub_agro_tras_gde':'Tractor grande',
-        'cub_agro_tras_xgde':'Tractor grande','camara':'Bultos','bateria_chica':'Baterias',
-        'bateria_grande':'Baterias','lubricante_caja':'Bultos','lubricante_tambor':'Tambor','bulto_general':'Bultos',
+        'cub_moto':'Auto',
+        'cub_auto_r13_r14':'Auto',
+        'cub_auto_r15_r18':'Auto','cub_camioneta_r16_r19':'Camioneta',
+        'cub_auto_r19_r22':'Camion',
+        'cub_camion_chico':'Camion','cub_camion_grande':'Camion',
+        'cub_agro_del':'Tractor del y 17,5',
+        'cub_agro_tras_med':'Tractor traseras',
+        'cub_agro_tras_gde':'Tractor grande','cub_agro_tras_xgde':'Tractor grande',
+        'cub_vial':'Tractor grande',
+        'camara':'Bultos','bateria_chica':'Baterias','bateria_grande':'Baterias',
+        'lubricante':'Bultos','bulto_general':'Bultos',
     },
     'SELEGUIN': {
-        'cub_moto':'Bultos, atados, bolsas, cajas','cub_auto_r12_r14':'Cubierta auto',
-        'cub_auto_r15_r19':'Cubierta camioneta','cub_camion_r20_r22':'Cubierta camion',
-        'cub_agro_del':'Bultos, atados, bolsas, cajas','cub_agro_tras_med':'Tractor mediana 24 a 26',
-        'cub_agro_tras_gde':'Tractor grande 28 a 30','cub_agro_tras_xgde':'Tractor extra grande +30',
+        'cub_moto':'Bultos, atados, bolsas, cajas',
+        'cub_auto_r13_r14':'Cubierta auto',
+        'cub_auto_r15_r18':'Cubierta camioneta','cub_camioneta_r16_r19':'Cubierta camioneta',
+        'cub_auto_r19_r22':'Cubierta camion',
+        'cub_camion_chico':'Cubierta camion','cub_camion_grande':'Cubierta camion',
+        'cub_agro_del':'Bultos, atados, bolsas, cajas',
+        'cub_agro_tras_med':'Tractor mediana 24 a 26',
+        'cub_agro_tras_gde':'Tractor grande 28 a 30',
+        'cub_agro_tras_xgde':'Tractor extra grande +30',
+        'cub_vial':'Tractor grande 28 a 30',
         'camara':'Bultos, atados, bolsas, cajas','bateria_chica':'Baterias chicas','bateria_grande':'Baterias grandes',
-        'lubricante_caja':'Bultos, atados, bolsas, cajas','lubricante_tambor':None,'bulto_general':'Bultos, atados, bolsas, cajas',
+        'lubricante':'Bultos, atados, bolsas, cajas','bulto_general':'Bultos, atados, bolsas, cajas',
     },
     'EXPRESO ROCHA': {
-        'cub_moto':'Bultos camaras','cub_auto_r12_r14':'Cubierta chica hasta 205/70.16',
-        'cub_auto_r15_r19':'Cubierta grande hasta 750.16','cub_camion_r20_r22':'Cubierta camion',
+        'cub_moto':'Bultos camaras',
+        'cub_auto_r13_r14':'Cubierta chica hasta 205/70.16',
+        'cub_auto_r15_r18':'Cubierta grande hasta 750.16','cub_camioneta_r16_r19':'Cubierta grande hasta 750.16',
+        'cub_auto_r19_r22':'Cubierta camion',
+        'cub_camion_chico':'Cubierta camion','cub_camion_grande':'Cubierta camion',
         'cub_agro_del':'Neumatico agricolas y viales hasta 18.4/15-26',
         'cub_agro_tras_med':'Neum. Agricolas y viales mas de 23.1/18-26',
         'cub_agro_tras_gde':'Neum. Agricolas y viales mas de 23.1/18-26',
         'cub_agro_tras_xgde':'Neum. Agricolas y viales mas de 23.1/18-26',
+        'cub_vial':'Neum. Agricolas y viales mas de 23.1/18-26',
         'camara':'Bultos camaras','bateria_chica':'Baterias','bateria_grande':'Baterias',
-        'lubricante_caja':'Bultos camaras','lubricante_tambor':None,'bulto_general':'Bultos camaras',
+        'lubricante':'Bultos camaras','bulto_general':'Bultos camaras',
     },
     'BULEVAR (ACC)': {
-        'cub_moto':'Atado cub moto','cub_auto_r12_r14':'Cub auto  hasta rod 14',
-        'cub_auto_r15_r19':'Cub camioneta 15 a 19','cub_camion_r20_r22':'Cub camion',
-        'cub_agro_del':'Cub tractor chica (hasta 22)','cub_agro_tras_med':'Cub tractor mediana (24)',
-        'cub_agro_tras_gde':'Cub tractor grande (de 25 a 36)','cub_agro_tras_xgde':'Cub vial rod 38 a 42',
+        'cub_moto':'Atado cub moto',
+        'cub_auto_r13_r14':'Cub auto  hasta rod 14',
+        'cub_auto_r15_r18':'Cub camioneta 15 a 19','cub_camioneta_r16_r19':'Cub camioneta 15 a 19',
+        'cub_auto_r19_r22':'Cub camion',
+        'cub_camion_chico':'Cub camion','cub_camion_grande':'Cub camion',
+        'cub_agro_del':'Cub tractor chica (hasta 22)',
+        'cub_agro_tras_med':'Cub tractor mediana (24)',
+        'cub_agro_tras_gde':'Cub tractor grande (de 25 a 36)',
+        'cub_agro_tras_xgde':'Cub vial rod 38 a 42',
+        'cub_vial':'Cub tractor grande (de 25 a 36)',
         'camara':'Bolsas','bateria_chica':'Bat chicas','bateria_grande':'Bat grandes',
-        'lubricante_caja':'Caja aceite 1 y 4lts','lubricante_tambor':'Tambor 205lts','bulto_general':'Bolsas',
+        'lubricante':'Caja aceite 1 y 4lts','bulto_general':'Bolsas',
     },
     'PERICO': {
-        'cub_moto':'Atado cub moto','cub_auto_r12_r14':'Cub auto  hasta rod 14',
-        'cub_auto_r15_r19':'Cub camioneta 15 a 19','cub_camion_r20_r22':'Cub camion',
-        'cub_agro_del':'Cub tractor chica','cub_agro_tras_med':'Cub tractor mediana',
-        'cub_agro_tras_gde':'Cub tractor grande','cub_agro_tras_xgde':'Cub vial rod 38 a 42',
+        'cub_moto':'Atado cub moto',
+        'cub_auto_r13_r14':'Cub auto  hasta rod 14',
+        'cub_auto_r15_r18':'Cub camioneta 15 a 19','cub_camioneta_r16_r19':'Cub camioneta 15 a 19',
+        'cub_auto_r19_r22':'Cub camion',
+        'cub_camion_chico':'Cub camion','cub_camion_grande':'Cub camion',
+        'cub_agro_del':'Cub tractor chica',
+        'cub_agro_tras_med':'Cub tractor mediana',
+        'cub_agro_tras_gde':'Cub tractor grande',
+        'cub_agro_tras_xgde':'Cub vial rod 38 a 42',
+        'cub_vial':'Cub tractor grande',
         'camara':'Bolsas','bateria_chica':'Bat chicas','bateria_grande':'Bat grandes',
-        'lubricante_caja':'Caja aceite 1 y 4lts','lubricante_tambor':'Tambor 205lts','bulto_general':'Bolsas',
+        'lubricante':'Caja aceite 1 y 4lts','bulto_general':'Bolsas',
     },
     'TRUJILLO': {
-        'cub_moto':'Bultos','cub_auto_r12_r14':'Paseo hasta 16','cub_auto_r15_r19':'Paseo hasta 16',
-        'cub_camion_r20_r22':'Camion','cub_agro_del':'Agricola delantera',
-        'cub_agro_tras_med':'Agricola mediana','cub_agro_tras_gde':'Agricola extra grande',
-        'cub_agro_tras_xgde':'Agricola extra grande','camara':'Bultos',
-        'bateria_chica':'Bat hasta 150 amp','bateria_grande':'Bat + 150 amp',
-        'lubricante_caja':'Cajas lubricantes','lubricante_tambor':'Tambor 205lts','bulto_general':'Bultos',
+        'cub_moto':'Bultos',
+        'cub_auto_r13_r14':'Paseo hasta 16',
+        'cub_auto_r15_r18':'Paseo hasta 16','cub_camioneta_r16_r19':'Paseo hasta 16',
+        'cub_auto_r19_r22':'Camion',
+        'cub_camion_chico':'Camion','cub_camion_grande':'Camion',
+        'cub_agro_del':'Agricola delantera',
+        'cub_agro_tras_med':'Agricola mediana',
+        'cub_agro_tras_gde':'Agricola extra grande','cub_agro_tras_xgde':'Agricola extra grande',
+        'cub_vial':'Agricola extra grande',
+        'camara':'Bultos','bateria_chica':'Bat hasta 150 amp','bateria_grande':'Bat + 150 amp',
+        'lubricante':'Cajas lubricantes','bulto_general':'Bultos',
     },
     'GONFER': {
-        'cub_moto':'Bultos','cub_auto_r12_r14':'Cubierta de auto',
-        'cub_auto_r15_r19':'Cubierta de camioneta','cub_camion_r20_r22':'Cubierta de camion chico',
-        'cub_agro_del':'Agricola chica','cub_agro_tras_med':'Agricola hasta rod 28',
-        'cub_agro_tras_gde':'Agricola grande rod 30 en adelante','cub_agro_tras_xgde':'Agricola grande rod 30 en adelante',
+        'cub_moto':'Bultos',
+        'cub_auto_r13_r14':'Cubierta de auto',
+        'cub_auto_r15_r18':'Cubierta de camioneta','cub_camioneta_r16_r19':'Cubierta de camioneta',
+        'cub_auto_r19_r22':'Cubierta de camion chico',
+        'cub_camion_chico':'Cubierta de camion chico','cub_camion_grande':'Cubierta de camion chico',
+        'cub_agro_del':'Agricola chica',
+        'cub_agro_tras_med':'Agricola hasta rod 28',
+        'cub_agro_tras_gde':'Agricola grande rod 30 en adelante',
+        'cub_agro_tras_xgde':'Agricola grande rod 30 en adelante',
+        'cub_vial':'Agricola grande rod 30 en adelante',
         'camara':'Bultos','bateria_chica':'Bat hasta 110 amp','bateria_grande':'Bat mayor 110 amp',
-        'lubricante_caja':'Bultos lubricantes','lubricante_tambor':'Tambor 205lts','bulto_general':'Bultos',
+        'lubricante':'Bultos lubricantes','bulto_general':'Bultos',
     },
     '3EME (El Chambon)': {
-        'cub_moto':'Atado cub moto','cub_auto_r12_r14':'Cub auto  hasta rod 14',
-        'cub_auto_r15_r19':'Cub camioneta 15 a 19','cub_camion_r20_r22':'Cub camion',
-        'cub_agro_del':'Cub tractor chica','cub_agro_tras_med':'Cub tractor mediana',
-        'cub_agro_tras_gde':'Cub tractor grande','cub_agro_tras_xgde':'Cub vial rod 38 a 42',
+        'cub_moto':'Atado cub moto',
+        'cub_auto_r13_r14':'Cub auto  hasta rod 14',
+        'cub_auto_r15_r18':'Cub camioneta 15 a 19','cub_camioneta_r16_r19':'Cub camioneta 15 a 19',
+        'cub_auto_r19_r22':'Cub camion',
+        'cub_camion_chico':'Cub camion','cub_camion_grande':'Cub camion',
+        'cub_agro_del':'Cub tractor chica',
+        'cub_agro_tras_med':'Cub tractor mediana',
+        'cub_agro_tras_gde':'Cub tractor grande',
+        'cub_agro_tras_xgde':'Cub vial rod 38 a 42',
+        'cub_vial':'Cub tractor grande',
         'camara':'Bolsas','bateria_chica':'Bat chicas','bateria_grande':'Bat grandes',
-        'lubricante_caja':'Caja aceite 1 y 4lts','lubricante_tambor':'Tambor 205lts','bulto_general':'Bolsas',
+        'lubricante':'Caja aceite 1 y 4lts','bulto_general':'Bolsas',
     },
     'Martin Escudero (Lascano)': {
-        'cub_moto':'Auto','cub_auto_r12_r14':'Auto','cub_auto_r15_r19':'Camioneta',
-        'cub_camion_r20_r22':'Camion','cub_agro_del':'Agricola chica',
-        'cub_agro_tras_med':'Agricola mediana','cub_agro_tras_gde':'Agricola grande',
-        'cub_agro_tras_xgde':'Agricola grande','camara':'Bultos/atados',
-        'bateria_chica':'Baterias chicas','bateria_grande':'Baterias grandes',
-        'lubricante_caja':'Bultos lubricantes','lubricante_tambor':'Tambor aceite','bulto_general':'Bultos/atados',
+        'cub_moto':'Auto',
+        'cub_auto_r13_r14':'Auto',
+        'cub_auto_r15_r18':'Camioneta','cub_camioneta_r16_r19':'Camioneta',
+        'cub_auto_r19_r22':'Camion',
+        'cub_camion_chico':'Camion','cub_camion_grande':'Camion',
+        'cub_agro_del':'Agricola chica',
+        'cub_agro_tras_med':'Agricola mediana',
+        'cub_agro_tras_gde':'Agricola grande','cub_agro_tras_xgde':'Agricola grande',
+        'cub_vial':'Agricola grande',
+        'camara':'Bultos/atados','bateria_chica':'Baterias chicas','bateria_grande':'Baterias grandes',
+        'lubricante':'Bultos lubricantes','bulto_general':'Bultos/atados',
     },
     'Arzuaga': {
-        'cub_moto':'Atado cubiertas moto','cub_auto_r12_r14':'cubiertas r13 r14',
-        'cub_auto_r15_r19':'cubiertas r16 r18','cub_camion_r20_r22':'Cubiertas camion',
-        'cub_agro_del':'Cubiertas tractor chica','cub_agro_tras_med':'Cubiertas tractor mediana',
+        'cub_moto':'Atado cubiertas moto',
+        'cub_auto_r13_r14':'cubiertas r13 r14',
+        'cub_auto_r15_r18':'cubiertas r16 r18','cub_camioneta_r16_r19':'cubiertas r16 r18',
+        'cub_auto_r19_r22':'Cubiertas camion',
+        'cub_camion_chico':'Cubiertas camion','cub_camion_grande':'Cubiertas camion',
+        'cub_agro_del':'Cubiertas tractor chica',
+        'cub_agro_tras_med':'Cubiertas tractor mediana',
         'cub_agro_tras_gde':'Cubiertas tractor grande','cub_agro_tras_xgde':'Cubiertas tractor grande',
+        'cub_vial':'Cubiertas tractor grande',
         'camara':'Paquetes/cajas','bateria_chica':'Baterias chicas','bateria_grande':'Baterias camion',
-        'lubricante_caja':'Paquetes/cajas','lubricante_tambor':'Tanque aceite','bulto_general':'Paquetes/cajas',
+        'lubricante':'Paquetes/cajas','bulto_general':'Paquetes/cajas',
     },
     'Franchi': {
-        'cub_moto':'Bultos','cub_auto_r12_r14':'Cub.auto','cub_auto_r15_r19':'Cub.camioneta',
-        'cub_camion_r20_r22':'Cub.camion','cub_agro_del':'Bultos',
-        'cub_agro_tras_med':'Cub. agricola mediana','cub_agro_tras_gde':'Cub. agricola gde',
-        'cub_agro_tras_xgde':'Cub. agricola gde','camara':'Bultos',
-        'bateria_chica':'Baterias chicas','bateria_grande':'Baterias grandes',
-        'lubricante_caja':'Bultos','lubricante_tambor':None,'bulto_general':'Bultos',
+        'cub_moto':'Bultos',
+        'cub_auto_r13_r14':'Cub.auto',
+        'cub_auto_r15_r18':'Cub.camioneta','cub_camioneta_r16_r19':'Cub.camioneta',
+        'cub_auto_r19_r22':'Cub.camion',
+        'cub_camion_chico':'Cub.camion','cub_camion_grande':'Cub.camion',
+        'cub_agro_del':'Bultos',
+        'cub_agro_tras_med':'Cub. agricola mediana',
+        'cub_agro_tras_gde':'Cub. agricola gde','cub_agro_tras_xgde':'Cub. agricola gde',
+        'cub_vial':'Cub. agricola gde',
+        'camara':'Bultos','bateria_chica':'Baterias chicas','bateria_grande':'Baterias grandes',
+        'lubricante':'Bultos','bulto_general':'Bultos',
     },
 }
 
