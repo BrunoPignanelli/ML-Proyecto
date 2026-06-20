@@ -1566,7 +1566,6 @@ async function analizarLlanta() {
         const worker = await Tesseract.createWorker('eng', 1, { logger: logFn });
         await worker.setParameters({
           tessedit_char_whitelist: '0123456789/. -RrLT',
-          tessedit_pageseg_mode: '7',
         });
         const result = await worker.recognize(dataUrl);
         await worker.terminate();
@@ -1577,20 +1576,26 @@ async function analizarLlanta() {
       }
     };
 
+    // Resultado válido: rodado entre 12–28 y perfil razonable (≤95%)
+    const valida = d => d && d.rim >= 12 && d.rim <= 28 && (!d.profile || d.profile <= 95);
+
     // Intento 1: imagen raw (o upscaleada) — Tesseract usa su algoritmo adaptativo
     let r1 = await ocr(rawUrl, '1/2');
     let texto = r1.data.text;
     let data  = parsearMedidaLlanta(texto);
 
-    // Intento 2: binarizada — si el intento 1 no encontró medida o devolvió poco texto
-    if (!data || texto.replace(/\s/g,'').length < 6) {
+    // Intento 2: binarizada — si el intento 1 no encontró medida válida
+    if (!valida(data) || texto.replace(/\s/g,'').length < 6) {
       const binUrl = await preprocesar(rawUrl, true);
       const r2 = await ocr(binUrl, '2/2');
       const data2 = parsearMedidaLlanta(r2.data.text);
-      if (data2) {
+      if (valida(data2)) {
         data  = data2;
         texto = r2.data.text;
-      } else if (r2.data.text.replace(/\s/g,'').length > texto.replace(/\s/g,'').length) {
+      } else if (data2 && !valida(data)) {
+        data  = data2;
+        texto = r2.data.text;
+      } else if (!data && r2.data.text.replace(/\s/g,'').length > texto.replace(/\s/g,'').length) {
         texto = r2.data.text;
       }
     }
