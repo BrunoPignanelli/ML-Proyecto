@@ -15,7 +15,7 @@
 - **Control de stock en tiempo real** — tabla `stock` en Supabase con 1.436 productos y sus stocks iniciales desde Libro1.xlsx. Al guardar un pedido, la RPC `save_order_and_decrement_stock` descuenta automáticamente el stock de cada producto en la misma transacción. Si el stock no alcanza, el pedido no se guarda y el usuario ve el error.
 - **PWA** — `manifest.json`, `sw.js`, `icon.svg` listos; se activa automáticamente al deployar en Vercel (HTTPS)
 - **Mobile responsive** — Bootstrap 5, media query @575px, touch targets 44px, iOS no-zoom inputs, tabs icon-only en mobile, overflow-x:hidden
-- **Autenticación** — login con email/password vía Supabase Auth. Rol `admin` ve todo (incluyendo Dashboard); rol `tenant` ve solo Calcular Envío, Escanear Llanta y Catálogo. Sesión en sessionStorage (se limpia al cerrar el tab). Botón "Salir" en navbar.
+- **Autenticación y sesiones persistentes** — login con email/password vía Supabase Auth. Rol `admin` ve todo (incluyendo Dashboard y borrado de pedidos); rol `tenant` ve solo Calcular Envío, Escanear Llanta y Catálogo. Sesión en `localStorage` con `refresh_token` — persiste entre cierres del browser, se renueva automáticamente antes de expirar. Botón "Salir" limpia localStorage.
 
 ### Deploy
 - **URL de producción:** `ml-proyecto.vercel.app/petinsa_envios.html`
@@ -191,7 +191,38 @@ Funciones JS en `html_template.py`:
 
 ---
 
-## 6. Known Gotchas
+## 6. Seguridad
+
+### Supabase RLS (Row-Level Security)
+
+| Tabla | RLS | Políticas |
+|---|---|---|
+| `pedidos` | ✅ Habilitado | `read_authenticated` (SELECT), `insert_authenticated` (INSERT), `delete_admin_only` (DELETE solo si `jwt.user_metadata.role = 'admin'`) |
+| `stock` | ✅ Habilitado | Sin políticas directas — deny all. Solo accesible vía RPC `SECURITY DEFINER` |
+
+### Claves de API
+
+| Clave | Dónde vive | Uso |
+|---|---|---|
+| Anon key (`sb_publishable_...`) | En el HTML generado + GitHub | Identifica el proyecto; no da acceso a datos sin JWT válido |
+| Service role key (`sb_secret_...`) | Solo en `.env` local (gitignored) | Scripts locales únicamente (`cargar_stock_inicial.py`) |
+
+### Sesiones (JS)
+
+- `AUTH_KEY = 'petinsa_session'` en `localStorage`
+- Objeto guardado: `{ token, refresh, role, email, expires_at }`
+- `getAuthHeaders()` es **async** — refresca silenciosamente si `expires_at - now() < 5 min`
+- `refreshSession(refreshToken)` llama `/auth/v1/token?grant_type=refresh_token`; si falla limpia localStorage y muestra login
+- Boot `checkSession()` es **async** — intenta refresh si el token ya expiró al abrir la página
+
+### RPC
+
+- `save_order_and_decrement_stock(p_record, p_lineas)` — `SECURITY DEFINER`, solo `authenticated` y `service_role` pueden ejecutarla
+- El rol `anon` (sin login) no puede llamarla ni tocar `pedidos` ni `stock` directamente
+
+---
+
+## 7. Known Gotchas
 
 - **`MAPPING` duplicado** en `generar_html_data.py` y `generar_html.py` — actualizar ambos si cambian categorías.
 - **GONFER sin IVA** — multiplica por `IVA = 1.22` al parsear. No aplicar de nuevo en consultas.
