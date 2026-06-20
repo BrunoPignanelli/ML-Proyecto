@@ -101,6 +101,9 @@ for row in rows[1:]:
 
 print(f"  {len(records)} productos encontrados en Libro1.xlsx")
 
+# Insertar en lotes de 500 filas para no superar el límite de payload de Supabase.
+# El header 'Prefer: resolution=merge-duplicates' hace UPSERT: si el cod ya existe,
+# actualiza en lugar de fallar — permite re-ejecutar el script sin errores.
 BATCH = 500
 url = f"{SUPABASE_URL}/rest/v1/stock"
 total_ok = 0

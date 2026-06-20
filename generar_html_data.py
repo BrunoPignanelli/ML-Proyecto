@@ -1,6 +1,13 @@
 """
-Genera petinsa_envios.html — app standalone para PETINSA.
-Ejecutar: python generar_html.py
+generar_html_data.py
+--------------------
+Módulo de clasificación de productos del ERP en categorías unificadas de envío.
+
+Importado por generar_html.py. Contiene:
+  - UNIFIED_CATS: 17 categorías usadas para buscar la tarifa correcta por agencia.
+  - MAPPING: dict {agencia: {cat_unificada: label_columna_tarifa}}.
+  - classify(familia, desc): asigna cada producto del catálogo a una categoría.
+  - Funciones auxiliares de parsing para descripciones de llantas y baterías.
 """
 import openpyxl, re, unicodedata, json
 from pathlib import Path
@@ -11,12 +18,27 @@ import copy
 # ═══════════════════════════════════════════════════════
 
 def norm(s):
+    """Normaliza un valor de celda Excel para comparación.
+
+    Convierte a minúsculas, elimina espacios extra, caracteres NBSP y
+    acentos (usando descomposición NFD). Retorna '' si el valor es None.
+    Usada en todos los lookups de texto para hacer las búsquedas robustas.
+    """
     if s is None: return ''
     s = str(s).replace('\xa0', ' ')
     s = re.sub(r'\s+', ' ', s).strip().lower()
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
 def extract_rim(desc):
+    """Extrae el número de rodado (diámetro de aro) de la descripción de una llanta.
+
+    Prueba tres patrones en orden de especificidad:
+      1. "dígito - 16"  → formato convencional/agrícola (ej: '7 - 16', '14.9 - 24')
+      2. "R 15", "R15"  → formato métrico y convencional (ej: '195/65 R15', 'HR 15')
+      3. "-16" precedido por dígito/slash/espacio → fallback para '6.50-16'
+
+    Retorna float (ej: 22.5) o None si no se detecta rodado.
+    """
     d = str(desc).upper()
     m = re.search(r'\d\s+-\s+(\d{2,3}(?:\.\d)?)\b', d)
     if m: return float(m.group(1))
@@ -27,6 +49,12 @@ def extract_rim(desc):
     return None
 
 def extract_amp(desc):
+    """Extrae la capacidad en amperios de una batería (ej: '110A' → 110).
+
+    Busca el patrón '\d{2,3}A' en la descripción. Usado por classify() para
+    distinguir batería chica (≤110 Ah) de batería grande (>110 Ah).
+    Retorna int o None.
+    """
     m = re.search(r'\b(\d{2,3})A\b', str(desc).upper())
     return int(m.group(1)) if m else None
 
@@ -51,6 +79,32 @@ UNIFIED_CATS = {
 }
 
 def classify(familia, desc):
+    """Clasifica un producto ERP en una de las 17 categorías unificadas de envío.
+
+    La categoría resultante (clave de UNIFIED_CATS) determina qué columna de tarifa
+    se usa para cada agencia en el dict MAPPING. Por ejemplo, 'cub_auto_r15_r18'
+    mapea a 'Rodado 15 a 18' en DAC y a 'Cubierta auto (15 a 17)' en MEGAM.
+
+    Lógica de prioridad (de mayor a menor):
+      1. Familia ERP contiene 'LUBRICANTE' → lubricante
+      2. Familia contiene 'BATERIA' → bateria_chica / bateria_grande según Ah
+      3. Familia contiene 'ACCES' o 'CAM MOTO' → camara (cámara de aire / accesorio)
+      4. Familia contiene 'MOTO' → cub_moto
+      5. Familia contiene 'GIGANTE' → camion_chico / camion_grande según rodado ≥22.5
+      6. Familia contiene 'VIAL' o 'IND.' → cub_vial (OTR/industrial)
+      7. Familia contiene 'AGR DEL' → cub_agro_del (eje delantero tractor)
+      8. Familia contiene 'AGR TRAS' → cub_agro_tras_* según rodado (24/28/34")
+      9. Familia contiene 'PASEO' → cub_auto_* según rodado
+     10. Familia contiene 'CAMIONETA' o 'PICK UP' → cub_camioneta / cub_auto según rodado
+     11. Sin match → 'bulto_general'
+
+    Args:
+        familia: valor de la columna 'Familia' del ERP (Libro1.xlsx)
+        desc:    valor de la columna 'Descripción de Producto'
+
+    Returns:
+        str — clave válida de UNIFIED_CATS
+    """
     f = str(familia).upper()
     d = str(desc).upper()
     if 'LUBRICANTE' in f:
@@ -354,15 +408,33 @@ while col < ncols:
 IVA = 1.22
 
 def pick_price_col(ag, ci):
+    """Selecciona las columnas de categoría y precio para una agencia.
+
+    Algunas agencias ocupan múltiples columnas en el Excel de tarifas
+    (ej: Arzuaga tiene 2 opciones de destino; GONFER tiene precio en col 3).
+    Retorna (col_categoria, col_precio) como índices de columna.
+    """
     pc = ci[1] if len(ci) > 1 else ci[0]
     if 'GONFER' in ag.upper() and len(ci) >= 4: pc = ci[3]
     return ci[0], pc
 
 def parse_canje(val):
+    """Convierte un valor de celda Excel a porcentaje de canje [0.0–1.0].
+
+    El Excel almacena el canje como float (0.5 = 50%) o puede estar vacío.
+    Limita a 1.0 para evitar valores erróneos. Retorna 0.0 si el valor es None.
+    """
     if isinstance(val, (int, float)): return min(float(val), 1.0)
     return 0.0
 
 def parse_freq(text):
+    """Convierte el texto de frecuencia de despacho a una tupla (label, días/semana).
+
+    Lee la celda de frecuencia del Excel (ej: 'mart y jue') y la normaliza
+    a un label para mostrar en la UI y un entero para calcular tiempos.
+
+    Retorna: (str_label, int_días_por_semana)
+    """
     if not text: return ('L a V', 5)
     t = str(text).lower()
     if 'cuando tiene carga' in t: return ('Bajo pedido', 1)
@@ -395,6 +467,18 @@ for ag, ci in acg.items():
     }
 
 def build_prices(mapping):
+    """Construye el dict PRICES{agencia}{cat_unificada} = precio_bruto.
+
+    Para cada agencia del MAPPING, traduce cada categoría unificada
+    (ej: 'cub_auto_r15_r18') a su label en el Excel de tarifas
+    (ej: 'Cubierta auto (15 a 17)'), busca el precio correspondiente
+    en agency_prices y lo almacena.
+
+    GONFER cotiza sin IVA: se multiplica por IVA=1.22 para normalizar.
+    Si la agencia no tiene precio para una categoría, la omite (→ None en el frontend).
+
+    Retorna: dict serializable como JSON, embebido en el HTML generado.
+    """
     pj = {}
     for ag, ag_map in mapping.items():
         if ag not in agencies_meta: continue
