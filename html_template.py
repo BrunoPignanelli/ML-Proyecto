@@ -659,19 +659,21 @@ function cliSearch(q) {
   if (!html) { box.style.display='none'; return; }
   box.innerHTML = html;
   box.querySelectorAll('.cli-ac-it').forEach(el => {
-    el.addEventListener('mousedown', e => { e.preventDefault(); selectClient(cliAcResults[parseInt(el.dataset.i)]); });
+    el.addEventListener('pointerdown', e => { e.preventDefault(); selectClient(cliAcResults[parseInt(el.dataset.i)]); });
   });
   const newBtn = document.getElementById('cli-ac-new');
-  if (newBtn) newBtn.addEventListener('mousedown', e => { e.preventDefault(); abrirNuevoCli(q); });
+  if (newBtn) newBtn.addEventListener('pointerdown', e => { e.preventDefault(); abrirNuevoCli(q); });
   box.style.display = '';
   cliAcIdx = -1;
 }
 function selectClient(c) {
+  if (!c) return;
   $('f-cliente').value = c.nombre;
-  $('f-dest').value = c.localidad || '';
+  const dest = $('f-dest');
+  dest.value = c.localidad || '';
+  dest.dispatchEvent(new Event('input'));
   $('cli-ac-box').style.display = 'none';
   cliAcResults = [];
-  if ($('results-section').style.display !== 'none') doCalc();
 }
 function abrirNuevoCli(nombre) {
   $('ncli-nombre').value = nombre;
