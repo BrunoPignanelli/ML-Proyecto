@@ -710,10 +710,14 @@ function cliSearch(q) {
   if (!html) { box.style.display='none'; return; }
   box.innerHTML = html;
   box.querySelectorAll('.cli-ac-it').forEach(el => {
-    el.addEventListener('pointerdown', e => { e.preventDefault(); selectClient(cliAcResults[parseInt(el.dataset.i)]); });
+    el.addEventListener('touchstart', e => { e.preventDefault(); selectClient(cliAcResults[parseInt(el.dataset.i)]); }, { passive: false });
+    el.addEventListener('click',      () => { selectClient(cliAcResults[parseInt(el.dataset.i)]); });
   });
   const newBtn = document.getElementById('cli-ac-new');
-  if (newBtn) newBtn.addEventListener('pointerdown', e => { e.preventDefault(); abrirNuevoCli(q); });
+  if (newBtn) {
+    newBtn.addEventListener('touchstart', e => { e.preventDefault(); abrirNuevoCli(q); }, { passive: false });
+    newBtn.addEventListener('click',      () => { abrirNuevoCli(q); });
+  }
   box.style.display = '';
   cliAcIdx = -1;
 }
