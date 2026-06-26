@@ -1031,7 +1031,6 @@ async function guardarPedido() {
       destino:  $('f-dest').value,
       vendedor: $('f-vendedor').value,
       obs:      $('f-obs').value,
-      pct_costo:  getPctCosto(),
       lineas: [...order.values()].map(p => ({cod:p.c, desc:p.d.substring(0,60), cat:p.cn, uc:p.uc, qty:p.qty})),
       m1_agencia: best.ag.nombre,
       m1_bru:     Math.round(best.bru),
@@ -1043,7 +1042,7 @@ async function guardarPedido() {
     showToast('Pedido guardado correctamente ✓', 'success');
     await refreshDashboard();
   } catch(e) {
-    showToast('Error al guardar el pedido', 'danger');
+    showToast('Error al guardar el pedido: ' + (e.message || e), 'danger');
   } finally {
     if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save me-1"></i>Guardar pedido'; }
   }
