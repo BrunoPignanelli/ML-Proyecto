@@ -621,12 +621,11 @@ let acResults = [], acIdx = -1;
 function acSearch(q) {
   const box = $('ac-box');
   if (q.length < 2) { box.style.display='none'; acResults=[]; return; }
-  const ql = normStr(q);
-  acResults = CATALOG.filter(p =>
-    normStr(p.c).includes(ql) ||
-    normStr(p.d).includes(ql) ||
-    normStr(p.r).includes(ql)
-  ).slice(0, 14);
+  const words = normStr(q).trim().split(/\s+/).filter(Boolean);
+  acResults = CATALOG.filter(p => {
+    const h = normStr(p.c)+' '+normStr(p.d)+' '+normStr(p.r);
+    return words.every(w => h.includes(w));
+  }).slice(0, 14);
   if (!acResults.length) { box.style.display='none'; return; }
   box.innerHTML = acResults.map((p,i) =>
     '<div class="ac-it" data-i="'+i+'">' +
@@ -1273,11 +1272,14 @@ const famSel=$('cat-fam');
 });
 
 function filterCat() {
-  const q=normStr($('cat-q').value), fam=$('cat-fam').value;
-  catFiltered=CATALOG.filter(p=>
-    (!fam||p.f===fam)&&
-    (!q||normStr(p.c).includes(q)||normStr(p.d).includes(q)||normStr(p.r).includes(q))
-  );
+  const words=normStr($('cat-q').value).trim().split(/\s+/).filter(Boolean);
+  const fam=$('cat-fam').value;
+  catFiltered=CATALOG.filter(p=>{
+    if(fam&&p.f!==fam) return false;
+    if(!words.length) return true;
+    const h=normStr(p.c)+' '+normStr(p.d)+' '+normStr(p.r);
+    return words.every(w=>h.includes(w));
+  });
   catPage=1; renderCat();
 }
 
