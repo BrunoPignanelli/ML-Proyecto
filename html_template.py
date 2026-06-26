@@ -977,7 +977,7 @@ async function loadOrders() {
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/pedidos?select=*&order=created_at.desc&limit=500`,
-      {headers: SB_HEADERS}
+      {headers: await getAuthHeaders()}
     );
     if (!r.ok) throw new Error();
     return await r.json();
@@ -1018,14 +1018,14 @@ async function deleteOrder(id) {
     return;
   }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${id}`, {
-    method: 'DELETE', headers: SB_HEADERS
+    method: 'DELETE', headers: await getAuthHeaders()
   });
 }
 
 async function deleteAllOrders() {
   if (!SUPABASE_URL) { localStorage.removeItem(LS_KEY); return; }
   await fetch(`${SUPABASE_URL}/rest/v1/pedidos?id=gt.0`, {
-    method: 'DELETE', headers: SB_HEADERS
+    method: 'DELETE', headers: await getAuthHeaders()
   });
 }
 
