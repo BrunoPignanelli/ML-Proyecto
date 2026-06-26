@@ -961,10 +961,17 @@ async function saveOrder(record) {
     } catch(e) {}
     return;
   }
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/pedidos`, {
-    method: 'POST', headers: SB_HEADERS, body: JSON.stringify(record)
+  const lineasParaStock = (record.lineas || []).map(l => ({ cod: l.cod, qty: l.qty }));
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/save_order_and_decrement_stock`, {
+    method: 'POST',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ p_record: record, p_lineas: lineasParaStock })
   });
-  if (!r.ok) throw new Error('Error al guardar en Supabase');
+  if (!r.ok) {
+    const errBody = await r.json().catch(() => ({}));
+    const msg = errBody.message || errBody.hint || errBody.error || ('HTTP ' + r.status + ': ' + JSON.stringify(errBody));
+    throw new Error(msg);
+  }
 }
 
 async function deleteOrder(id) {
