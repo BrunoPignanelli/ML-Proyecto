@@ -972,7 +972,7 @@ async function saveOrder(record) {
   });
   if (!r.ok) {
     const errBody = await r.json().catch(() => ({}));
-    const msg = errBody.message || errBody.hint || 'Error al guardar en Supabase';
+    const msg = errBody.message || errBody.hint || errBody.error || ('HTTP ' + r.status + ': ' + JSON.stringify(errBody));
     throw new Error(msg);
   }
 }
