@@ -8,7 +8,7 @@
 - **14 agencias** con precios, canje y frecuencia desde `COMPARATIVA AGENCIAS.xlsx` (hoja activa: `Costo ag. Mayo 2026`)
 - **Filtro por destino** — dropdown con los 19 departamentos de Uruguay (hardcodeado). Al seleccionar departamento, filtra agencias que cubren ese destino usando `AG_DEST`. El aviso "no encontrado" solo aparece si hay datos de cobertura Y el departamento no matchea ninguna agencia (no aparece si `AG_DEST` está vacío).
 - **Autocomplete de clientes** — 635 clientes con localidad cargados desde Excel ("Clientes - dpto - radios activo"). Al seleccionar un cliente se completa automáticamente el campo Localidad. Opción para crear nuevos clientes (se guardan en localStorage).
-- **Búsqueda accent-insensitive** con `normStr()` en todos los autocompletes y catálogo
+- **Búsqueda multi-palabra accent-insensitive** con `normStr()` en todos los autocompletes y catálogo — divide la query en palabras y requiere que TODAS estén presentes en cualquier orden (`words.every(w => haystack.includes(w))`)
 - **Escanear Llanta** — tab con cámara/upload de imagen. Tesseract.js (OCR, corre en el browser, sin costo) lee el código de medida (ej: 205/55 R16) y busca productos coincidentes en el catálogo. En mobile abre la cámara trasera directo.
 - **Dashboard** con KPIs, gráficas Chart.js e historial de pedidos
 - **Supabase integration** — conectado y funcionando; tablas `pedidos` y `stock` creadas; credenciales inyectadas en `.env` y en el HTML generado; fallback a localStorage si no hay credenciales
@@ -22,7 +22,7 @@
 - Repo `BrunoPignanelli/ML-Proyecto` rama `main` conectado a Vercel — cada merge a `main` redeploya automáticamente
 - Variables de entorno `SUPABASE_URL` y `SUPABASE_KEY` configuradas en Vercel
 - PWA activo en producción (HTTPS) — instalable desde Chrome/Safari en el teléfono
-- **Rama de desarrollo activa:** `pri` — los cambios se desarrollan ahí y se mergean a `main` cuando están aprobados
+- **Rama de desarrollo activa:** `brunix` — los cambios se desarrollan ahí y se mergean a `main` cuando están aprobados. **No usar `pri`** — introdujo regresiones graves en el sistema de auth (ver sección 7)
 
 ### Usuarios Supabase Auth (creados 2026-06-11)
 | Email | Role |
@@ -231,7 +231,10 @@ Funciones JS en `html_template.py`:
 - **Tesseract.js en mobile**: la calidad del OCR depende de la nitidez de la foto. Si falla, el usuario puede tipear la medida manualmente en el buscador del catálogo.
 - **`.env` requerido localmente** para que las credenciales Supabase se inyecten. Sin `.env`, el HTML generado cae a localStorage.
 - **Stock en Supabase vs stock en CATALOG**: el campo `st` embebido en el HTML es un snapshot de lectura (para el tab Catálogo). El stock autoritativo y vivo está en la tabla `stock` de Supabase — solo se modifica vía la RPC al guardar pedidos.
-- **`saveOrder()` usa RPC, no REST directo**: desde 2026-06-19, guardar un pedido llama `POST /rest/v1/rpc/save_order_and_decrement_stock` en lugar de `POST /rest/v1/pedidos`. La tabla `stock` tiene RLS sin políticas — el anon key no puede escribirla directamente; solo la RPC (SECURITY DEFINER) puede.
+- **`saveOrder()` usa RPC, no REST directo**: guardar un pedido llama `POST /rest/v1/rpc/save_order_and_decrement_stock` con el JWT del usuario (`getAuthHeaders()`). La tabla `stock` tiene RLS sin políticas — el anon key no puede escribirla directamente; solo la RPC (SECURITY DEFINER) puede.
+- **`loadOrders()`, `deleteOrder()`, `deleteAllOrders()` requieren JWT**: todas las operaciones sobre `pedidos` usan `getAuthHeaders()`, no `SB_HEADERS` (anon key). Con anon key el RLS retorna 0 filas sin error — bug silencioso.
 - **Schema real de `pedidos`**: columnas `fecha, nped, cliente, destino, vendedor, obs, canje_modo, lineas, m1_agencia, m1_bru, m1_net, m2_net, m2_ags`. No existe `pct_costo` — el campo JS homónimo no se persiste en la DB. La RPC inserta solo las columnas que existen.
 - **Destino es `<select>`, no `<input>`**: el campo `f-dest` es un `<select>` con los 19 departamentos. Los clientes cuya `localidad` sea el nombre exacto del departamento (ej: "Artigas") se auto-completan; los que tienen ciudad (ej: "Bella Union") dejan el select vacío.
 - **`SUPABASE_SERVICE_KEY` solo para scripts locales** — nunca se embebe en el HTML. Se usa únicamente en `cargar_stock_inicial.py`.
+- **Regresiones de la rama `pri` (2026-06-25, ya corregidas)**: `pri` eliminó `getAuthHeaders()` y `refreshSession()` del template, y reemplazó todas las llamadas a Supabase por `SB_HEADERS` (anon key). Esto rompió guardado, lectura y borrado de pedidos en producción. Al mergear cambios de `pri` a `main`, verificar siempre que estas funciones existan y que ninguna operación use `SB_HEADERS` directamente donde se requiere JWT.
+- **Sin trazabilidad de usuarios**: la tabla `pedidos` no tiene columna `user_id` ni `user_email`. El campo `vendedor` es texto libre — no está vinculado al usuario autenticado. Pendiente: agregar `user_email` poblado desde la RPC con `auth.email()`.
