@@ -553,6 +553,41 @@ const SB_HEADERS = {
   'Content-Type': 'application/json',
   'Prefer': 'return=minimal'
 };
+// Returns headers with the logged-in user's JWT, refreshing silently if near expiry
+async function getAuthHeaders() {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (!raw) return SB_HEADERS;
+  let session = JSON.parse(raw);
+  if (session.refresh && session.expires_at && Date.now() > session.expires_at - 300000) {
+    session = await refreshSession(session.refresh) || session;
+  }
+  return { ...SB_HEADERS, 'Authorization': 'Bearer ' + (session.token || SUPABASE_KEY) };
+}
+async function refreshSession(refreshToken) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    const role = data.user?.user_metadata?.role || 'tenant';
+    const session = {
+      token: data.access_token,
+      refresh: data.refresh_token,
+      role,
+      email: data.user?.email || '',
+      expires_at: Date.now() + ((data.expires_in || 3600) * 1000)
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+    return session;
+  } catch(e) {
+    localStorage.removeItem(AUTH_KEY);
+    $('login-overlay').style.display = 'flex';
+    return null;
+  }
+}
 const AZUL = '#1a3a5c';
 const COLORS = ['#1a3a5c','#2196F3','#4CAF50','#FF9800','#E91E63',
                 '#9C27B0','#00BCD4','#FF5722','#607D8B','#795548'];
